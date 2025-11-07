@@ -102,229 +102,33 @@ class ViT_MYNET(nn.Module):
         n_22 = self.InsVP_prompt_patch_22 # 左下分支
 
         self.scale_noise = 0.1
-        self.meta_net_2 = nn.Sequential( 
-            nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-            nn.ReLU(),
-            # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-            nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-        )
+        
+        def build_prompt_module():
+            return nn.Sequential(
+                nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2 - 1) / 2)),
+                nn.ReLU(),
+                # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
+                nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22 - 1) / 2))
+            )
+
+        self.meta_net_2 = build_prompt_module()
+        self.first_pool_prompt_nets = nn.ModuleList()
+        self.num_prompt_generators = 0
+
         if self.args.pixel_prompt == "YES":
-            # 设置共11个网络
-            if self.args.First_Pool_Prompt_Net0 == "YES":
-                self.First_Pool_Prompt_Net0 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net1 == "YES":
-                self.First_Pool_Prompt_Net1 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net2 == "YES":
-                self.First_Pool_Prompt_Net2 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net3 == "YES":
-                self.First_Pool_Prompt_Net3 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net4 == "YES":
-                self.First_Pool_Prompt_Net4 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net5 == "YES":
-                self.First_Pool_Prompt_Net5 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net6 == "YES":
-                self.First_Pool_Prompt_Net6 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net7 == "YES":
-                self.First_Pool_Prompt_Net7 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net8 == "YES":
-                self.First_Pool_Prompt_Net8 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )
-            if self.args.First_Pool_Prompt_Net9 == "YES":
-                self.First_Pool_Prompt_Net9 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )   
-            if self.args.First_Pool_Prompt_Net10_23 == "YES":
-                self.First_Pool_Prompt_Net10 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )     
-                self.First_Pool_Prompt_Net11 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net12 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net13 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net14 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net15 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net16 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net17 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net18 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )         
-                self.First_Pool_Prompt_Net19 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net20 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )         
-                self.First_Pool_Prompt_Net21 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net22 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )    
-                self.First_Pool_Prompt_Net23 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )         
-                self.First_Pool_Prompt_Net24 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net25 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )         
-                self.First_Pool_Prompt_Net26 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )      
-                self.First_Pool_Prompt_Net27 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )    
-                self.First_Pool_Prompt_Net28 = nn.Sequential( 
-                    nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                    nn.ReLU(),
-                    # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                    nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                )   
-                # self.First_Pool_Prompt_Net29 = nn.Sequential( 
-                #     nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                #     nn.ReLU(),
-                #     # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                #     nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                # )  
-                # self.First_Pool_Prompt_Net30 = nn.Sequential( 
-                #     nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                #     nn.ReLU(),
-                #     # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                #     nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                # )  
-                # self.First_Pool_Prompt_Net31 = nn.Sequential( 
-                #     nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                #     nn.ReLU(),
-                #     # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                #     nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                # )  
-                # self.First_Pool_Prompt_Net32 = nn.Sequential( 
-                #     nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                #     nn.ReLU(),
-                #     # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                #     nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                # )  
-                # self.First_Pool_Prompt_Net33 = nn.Sequential( 
-                #     nn.Conv2d(3, args.InsVP_hid_dim_2, n_2, stride=1, padding=int((n_2-1)/2)),
-                #     nn.ReLU(),
-                #     # AddNoise(scale=self.scale_noise),  # 添加自定义的扰动层
-                #     nn.Conv2d(args.InsVP_hid_dim_2, 3, n_22, stride=1, padding=int((n_22-1)/2))
-                # )  
+            pool_size = getattr(self.args, "pool_size", None)
+            if pool_size is None:
+                pool_size = 30
+            if pool_size < 1:
+                raise ValueError("pool_size must be >= 1 when pixel_prompt is enabled.")
+
+            additional_generators = max(pool_size - 1, 0)
+            self.first_pool_prompt_nets = nn.ModuleList(
+                build_prompt_module() for _ in range(additional_generators)
+            )
+            self.num_prompt_generators = 1 + len(self.first_pool_prompt_nets)
+        else:
+            self.num_prompt_generators = 0
 
     
         # 在channel维度进行1x1
@@ -541,7 +345,6 @@ class ViT_MYNET(nn.Module):
         n_patch = int(224 / n)
         x = x.reshape(B, 3, n_patch, n, n_patch, n) # [64, 3, 14, 16, 14, 16]
         x = x.permute(0, 2, 4, 1, 3, 5) # [64, 14, 14, 3, 16, 16]
-        x = x.reshape(B, n_patch*n_patch, 3, n, n)
         x = x.reshape(B*n_patch*n_patch, 3, n, n)
         x = self.meta_net_3(x) # Get the prompt of each patch
     
@@ -561,45 +364,17 @@ class ViT_MYNET(nn.Module):
     def get_prompts(self, x, session=-1):
         res = {}  # Initialize res as an empty dictionary
         if self.args.pixel_prompt == "YES":
-            # Define 10 prompts
-            prompts_list = [
-                self.meta_dropout_2(self.meta_net_2(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net0(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net1(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net2(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net3(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net4(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net5(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net6(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net7(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net8(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net9(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net10(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net11(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net12(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net13(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net14(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net15(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net16(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net17(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net18(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net19(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net20(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net21(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net22(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net23(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net24(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net25(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net26(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net27(x)),
-                self.meta_dropout_2(self.First_Pool_Prompt_Net28(x)),
-                # self.meta_dropout_2(self.First_Pool_Prompt_Net29(x)),
-                # self.meta_dropout_2(self.First_Pool_Prompt_Net30(x)),
-                # self.meta_dropout_2(self.First_Pool_Prompt_Net31(x)),
-                # self.meta_dropout_2(self.First_Pool_Prompt_Net32(x)),
-                # self.meta_dropout_2(self.First_Pool_Prompt_Net33(x)),
-            ]
-    
+            prompts_list = [self.meta_dropout_2(self.meta_net_2(x))]
+            for prompt_net in self.first_pool_prompt_nets:
+                prompts_list.append(self.meta_dropout_2(prompt_net(x)))
+
+            self.num_prompt_generators = len(prompts_list)
+
+            if self.args.prompt_pool and self.num_prompt_generators != self.args.pool_size:
+                raise ValueError(
+                    f"Prompt generator count ({self.num_prompt_generators}) must match pool_size ({self.args.pool_size})."
+                )
+
             if self.args.prompt_pool:
                 # print("使用l2p")
                 with torch.no_grad():

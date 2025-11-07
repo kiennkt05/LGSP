@@ -57,11 +57,17 @@ class ViT_FSCILTrainer(Trainer):
 
         
         if self.args.pixel_prompt == "YES":
+            prompt_branch_params = []
+            for prompt_net in self.model.first_pool_prompt_nets:
+                prompt_branch_params.extend(list(prompt_net.parameters()))
+
             params_Mask = [
-            p for p in 
-            list(self.model.meta_net_3.parameters()) + list(self.model.meta_net_2.parameters()) + 
-            [param for i in range(29) for param in getattr(self.model, f"First_Pool_Prompt_Net{i}").parameters()]
-            if p.requires_grad]
+                p
+                for p in list(self.model.meta_net_3.parameters())
+                + list(self.model.meta_net_2.parameters())
+                + prompt_branch_params
+                if p.requires_grad
+            ]
             optimizer_params.append({'params': params_Mask, 'lr': self.args.lr_InsVP})
 
         if self.args.Block_prompt == "YES":
@@ -138,46 +144,9 @@ class ViT_FSCILTrainer(Trainer):
                     checkpoint_path = "run_script/meta_net_2_params_lastBaseEpoch.pth"
                     state_dict = torch.load(checkpoint_path, map_location=self.device)
 
-                  
                     self.model.meta_net_2.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net0.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net1.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net2.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net3.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net4.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net5.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net6.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net7.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net8.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net9.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net10.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net11.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net12.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net13.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net14.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net15.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net16.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net17.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net18.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net19.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net20.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net21.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net22.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net23.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net24.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net25.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net26.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net27.load_state_dict(state_dict)
-                    self.model.First_Pool_Prompt_Net28.load_state_dict(state_dict)
-                    
-                # NO
-                if self.args.Block_prompt == "YES":
-                    checkpoint_path = "run_script/meta_net_3_params_lastBaseEpoch.pth"
-                    state_dict = torch.load(checkpoint_path, map_location=self.device)
-                    self.model.meta_net_block_0.load_state_dict(state_dict)
-                    self.model.meta_net_block_1.load_state_dict(state_dict)
-                    self.model.meta_net_block_2.load_state_dict(state_dict)
-                    self.model.meta_net_block_3.load_state_dict(state_dict)
+                    for prompt_net in self.model.first_pool_prompt_nets:
+                        prompt_net.load_state_dict(state_dict)
                   
                 
             if session > 0: 
@@ -188,64 +157,9 @@ class ViT_FSCILTrainer(Trainer):
                 if self.args.pixel_prompt == "YES":
                     for p in self.model.meta_net_2.parameters():
                         p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net0.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net1.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net2.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net3.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net4.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net5.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net6.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net7.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net8.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net9.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net10.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net11.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net12.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net13.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net14.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net15.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net16.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net17.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net18.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net19.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net20.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net21.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net22.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net23.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net24.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net25.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net26.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net27.parameters():
-                        p.requires_grad = False
-                    for p in self.model.First_Pool_Prompt_Net28.parameters():
-                        p.requires_grad = False
+                    for prompt_net in self.model.first_pool_prompt_nets:
+                        for p in prompt_net.parameters():
+                            p.requires_grad = False
 
                 # NO
                 if self.args.Block_prompt == "YES":
