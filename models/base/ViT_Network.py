@@ -517,34 +517,20 @@ class ViT_MYNET(nn.Module):
             return x
     
     def PatchPrompts_Block(self, x, block):
-<<<<<<< HEAD
         x = x.permute(0, 2, 1)  # Adjust the dimension
         x = block(x)  # Use the incoming block to process
         x = x.permute(0, 2, 1)  # Adjust back to the original dimension
-=======
-        x = x.permute(0, 2, 1)  # 调整维度
-        x = block(x)  # 使用传入的 block 进行处理
-        x = x.permute(0, 2, 1)  # 调整回原始维度
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         return self.meta_dropout_3(x)
 
     def PatchPrompts_Conv1d_1x1(self, x):
         x = x.permute(0, 2, 1)
-<<<<<<< HEAD
         x = self.meta_net_3(x) # Get the prompt of each patch
-=======
-        x = self.meta_net_3(x) # 拿到每个patch的prompt
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         x = x.permute(0, 2, 1)
         return self.meta_dropout_3(x)
     
     def PatchPrompts_Conv1d_1x1_two(self, x):
         x = x.unsqueeze(1)  # (batch_size, 1, 196, embed_dim)
-<<<<<<< HEAD
         x = self.meta_net_3(x) # Get the prompt of each patch
-=======
-        x = self.meta_net_3(x) # 拿到每个patch的prompt
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         x = x.squeeze(1)   # (batch_size, 196, 1)
         return self.meta_dropout_3(x)
 
@@ -557,18 +543,13 @@ class ViT_MYNET(nn.Module):
         x = x.permute(0, 2, 4, 1, 3, 5) # [64, 14, 14, 3, 16, 16]
         x = x.reshape(B, n_patch*n_patch, 3, n, n)
         x = x.reshape(B*n_patch*n_patch, 3, n, n)
-<<<<<<< HEAD
         x = self.meta_net_3(x) # Get the prompt of each patch
-=======
-        x = self.meta_net_3(x) # 拿到每个patch的prompt
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
     
         x = x.reshape(B, n_patch, n_patch, 1, n, n)
         x = x.permute(0, 3, 1, 4, 2, 5) # [64, 3, 14, 16, 14, 16]
         x = x.reshape(B, 1, 224, 224) # 再给合并
         return self.meta_dropout_3(x)
     
-<<<<<<< HEAD
     # Define a function to calculate cosine similarity, focusing more on local similarity.
     def cosine_similarity(self, a, b):
         # Normalize the vectors
@@ -581,20 +562,6 @@ class ViT_MYNET(nn.Module):
         res = {}  # Initialize res as an empty dictionary
         if self.args.pixel_prompt == "YES":
             # Define 10 prompts
-=======
-    # 定义一个函数计算余弦相似度，更关注局部的
-    def cosine_similarity(self, a, b):
-        # 归一化向量
-        a_norm = F.normalize(a, dim=1)  # [batch_size, channels, h, w]
-        b_norm = F.normalize(b, dim=1)  # [batch_size, channels, h, w]
-        # 计算点积
-        return torch.sum(a_norm * b_norm, dim=1, keepdim=True)  # [batch_size, 1, h, w]
-    
-    def get_prompts(self, x, session=-1):
-        res = {}  # 初始化 res 为一个空字典
-        if self.args.pixel_prompt == "YES":
-            # 定义 10 个 prompts
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
             prompts_list = [
                 self.meta_dropout_2(self.meta_net_2(x)),
                 self.meta_dropout_2(self.First_Pool_Prompt_Net0(x)),
@@ -649,27 +616,17 @@ class ViT_MYNET(nn.Module):
                 # print()
 
                 if session == 10:
-<<<<<<< HEAD
                     # Iterate over the first dimension (shape[0]), for each sample
                     for i in range(weights.shape[0]):
                         # Get the maximum and minimum values of each sample, and keep two decimal places
                         max_val = round(weights[i].max().item(), 2)
                         min_val = round(weights[i].min().item(), 2)
                         # Output the maximum and minimum values
-=======
-                    # 遍历第一个维度 (shape[0])，对于每个样本
-                    for i in range(weights.shape[0]):
-                        # 获取每个样本的最大值和最小值，并保留两位小数
-                        max_val = round(weights[i].max().item(), 2)
-                        min_val = round(weights[i].min().item(), 2)
-                        # 输出最大值和最小值
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
                         print(f"Sample {i}: Max = {max_val}, Min = {min_val}")
 
                 prompts_tensor = torch.stack(prompts_list, dim=0)  # [num_prompts, B, channel, h, w]
                 prompts_tensor = prompts_tensor.permute(1, 0, 2, 3, 4)  # [B, num_prompts, channel, h, w]
 
-<<<<<<< HEAD
                 # Expand the weight dimension, so that it can be multiplied by prompts_tensor
                 weights_expanded = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)  # [B, Pool_size, 1, 1, 1]
                 # Perform weighted sum, calculate the weighted prompts
@@ -696,39 +653,10 @@ class ViT_MYNET(nn.Module):
                 #     selected_prompts_list.append(selected_prompts)
 
                 # # Stack all samples' prompts into a final tensor
-=======
-                # 扩展权重维度，使其能够与 prompts_tensor 相乘
-                weights_expanded = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)  # [B, Pool_size, 1, 1, 1]
-                # 执行加权求和，计算加权后的 prompts
-                weighted_prompt = torch.sum(weights_expanded * prompts_tensor, dim=1)  # [batch_size, C, H, W]
-                prompts = weighted_prompt
-
-                # # 使用 einsum 直接计算加权和
-                # weighted_prompt = torch.einsum('bpchw,bp->bchw', prompts_tensor, weights)  # [B, C, H, W]
-                # prompts = weighted_prompt
-
-                # 使用index计算
-                # index = res['prompt_idx']
-                # prompts_tensor = torch.stack(prompts_list, dim=0)  # [num_prompts, B, channel, h, w]
-                # # 转置 prompts_tensor 为 [B, num_prompts, channel, h, w]，方便按 batch 操作
-                # prompts_tensor = prompts_tensor.permute(1, 0, 2, 3, 4)  # [B, num_prompts, channel, h, w]
-
-                # # 创建一个列表存储结果
-                # selected_prompts_list = []
-
-                # # 遍历每个样本
-                # for b in range(index.size(0)):  # 遍历 batch
-                #     # 直接通过索引从 prompts_tensor 提取该 batch 的 top_k prompts
-                #     selected_prompts = prompts_tensor[b, index[b]]  # [top_k, channel, h, w]
-                #     selected_prompts_list.append(selected_prompts)
-
-                # # 将所有样本的 prompts 堆叠为最终的张量
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
                 # selected_prompts = torch.stack(selected_prompts_list, dim=0)  # [B, top_k, channel, h, w]
                
                 # selected_prompts = selected_prompts.permute(1, 0, 2, 3, 4)  # [top_k, B, 3, 224, 224]
                 # similarities_list = [self.cosine_similarity(x, prompt) for prompt in selected_prompts]  # 每个元素为 [batch_size, 1, h, w]
-<<<<<<< HEAD
                 # similarities = torch.cat(similarities_list, dim=1)  # shape: [batch_size, top_k, h, w]
                 # similarities = similarities * self.args.temperature
                 # weights = F.softmax(similarities, dim=1)  # weights shape: [batch_size, top_k, h, w]
@@ -755,34 +683,6 @@ class ViT_MYNET(nn.Module):
                     similarities_list = [self.cosine_similarity(x, prompt) for prompt in prompts_list]  # Each element is [batch_size, 1, h, w]
 
                 # Concatenate all similarities and perform softmax normalization
-=======
-                # similarities = torch.cat(similarities_list, dim=1)  # 拼接后形状为 [batch_size, top_k, h, w]
-                # similarities = similarities * self.args.temperature
-                # weights = F.softmax(similarities, dim=1)  # 权重形状为 [batch_size, top_k, h, w]
-
-                # # weight_value = weights[0, 0, 0, 0]  # batch_idx=0, prompt_idx=0, h=0, w=0
-                # # print("Weight value:", weight_value.item())  # 转为标量输出
-
-                # selected_prompts = selected_prompts.permute(1, 0, 2, 3, 4)  # [batch_size, top_k, 3, 224, 224]
-                # weighted_prompt = torch.sum(weights.unsqueeze(2) * selected_prompts, dim=1)  # 加权求和后形状为 [batch_size, channels, h, w]
-                # prompts = weighted_prompt
-
-            else:
-                # 使用point-wise的卷积，提升channel维度
-                # 特征归一化，例如 BatchNorm 或 GroupNorm，以减少冗余信息
-                if self.FFN_input_30prompts:
-                    # print("哈哈")
-                    processed_input = self.ffn_input(x)
-                    # 处理 prompts_list 中的每个 prompt
-                    processed_prompts_list = [self.ffn_30prompts(prompt) for prompt in prompts_list]
-                    # 对分支进行softmax
-                    similarities_list = [self.cosine_similarity(processed_input, prompt) for prompt in processed_prompts_list]  # 每个元素为 [batch_size, 1, h, w]
-                else:
-                    # 对分支进行softmax
-                    similarities_list = [self.cosine_similarity(x, prompt) for prompt in prompts_list]  # 每个元素为 [batch_size, 1, h, w]
-
-                # 拼接所有相似度并通过 softmax 归一化
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
                 similarities = torch.cat(similarities_list, dim=1)  # [batch_size, 20, h, w]
                 # print(similarities.shape)
                 # similarities = similarities * self.args.temperature
@@ -804,27 +704,17 @@ class ViT_MYNET(nn.Module):
                 prompts = weighted_prompt
 
 
-<<<<<<< HEAD
                 # # Average the branches
                 # # Stack prompts, get shape: [batch_size, num_prompts, channels, h, w]
                 # prompts = torch.stack(prompts_list, dim=1)  # [batch_size, num_prompts, channels, h, w]
                 # # Directly take the mean of the num_prompts dimension
                 # weighted_prompt = prompts.mean(dim=1)  # [batch_size, channels, h, w]
                 # # Update prompts
-=======
-                # # 对分支进行平均
-                # # 堆叠 prompts，得到形状 [batch_size, num_prompts, channels, h, w]
-                # prompts = torch.stack(prompts_list, dim=1)  # [batch_size, num_prompts, channels, h, w]
-                # # 直接对 num_prompts 维度取均值
-                # weighted_prompt = prompts.mean(dim=1)  # [batch_size, channels, h, w]
-                # # 更新 prompts
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
                 # prompts = weighted_prompt
 
         res['prompts'] = prompts
         return res
     
-<<<<<<< HEAD
     # (0) Save the original image after de-normalization
     def save_batch_as_images(self, input_tensor, folder_path="output_images", file_prefix="image"):
         import os
@@ -846,38 +736,11 @@ class ViT_MYNET(nn.Module):
             image = input_clamped[i].permute(1, 2, 0).cpu().numpy()
             
             # Save as an image file
-=======
-    # （0）保存反归一化之后的原始图片
-    def save_batch_as_images(self, input_tensor, folder_path="output_images", file_prefix="image"):
-        import os
-        
-        # 确保文件夹存在
-        os.makedirs(folder_path, exist_ok=True)
-        
-        # 检查输入张量维度
-        if input_tensor.dim() != 4 or input_tensor.size(1) != 3:
-            raise ValueError("输入张量的维度必须为 [Batch_size, 3, h, w]")
-        
-        # 将张量裁剪到 [0, 1] 范围
-        input_clamped = input_tensor.clip(0, 1)
-        
-        # 遍历 Batch 中的每一张图片
-        batch_size = input_tensor.size(0)
-        for i in range(batch_size):
-            # 提取单张图片 [3, h, w] -> [h, w, 3]
-            image = input_clamped[i].permute(1, 2, 0).cpu().numpy()
-            
-            # 保存为图片文件
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
             file_path = os.path.join(folder_path, f"{file_prefix}_{i}.png")
             plt.imsave(file_path, image)
             print(f"Saved: {file_path}")
     
-<<<<<<< HEAD
     # (1) Save 10 masks
-=======
-    # （1）保存10个mask
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
     def save_ring_masks_as_images(self, ring_masks, save_dir):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -885,7 +748,6 @@ class ViT_MYNET(nn.Module):
         num_rings = ring_masks.shape[0]
         
         for i in range(num_rings):
-<<<<<<< HEAD
             # Get the i-th mask
             mask = ring_masks[i].detach().cpu().numpy()  # Convert to NumPy array
 
@@ -898,25 +760,10 @@ class ViT_MYNET(nn.Module):
             plt.close()  # Close the image, so that it does not overlap with the next one
     
     # (2) Save the entire mask after weighting
-=======
-            # 获取第 i 个掩码
-            mask = ring_masks[i].detach().cpu().numpy()  # 转换为 NumPy 数组
-
-            # 绘制图像
-            plt.imshow(mask, cmap='gray')
-            plt.axis('off')  # 不显示坐标轴
-
-            # 保存图像
-            plt.savefig(os.path.join(save_dir, f'ring_mask_{i}.png'), bbox_inches='tight', pad_inches=0)
-            plt.close()  # 关闭图像，以便不与下一个重叠
-    
-    # （2）保存加权后得到的整个mask
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
     def save_weighted_mask(self, weighted_ring_masks, save_dir):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-<<<<<<< HEAD
         # Ensure the mask is on CPU and convert to NumPy format
         weighted_mask = weighted_ring_masks.detach().cpu().numpy()
 
@@ -927,23 +774,10 @@ class ViT_MYNET(nn.Module):
         plt.close()
 
     # (3) Save the image of the entire mask added to the frequency domain
-=======
-        # 确保掩码在 CPU 并转换为 NumPy 格式
-        weighted_mask = weighted_ring_masks.detach().cpu().numpy()
-
-        # 绘制并保存总掩码
-        plt.imshow(weighted_mask, cmap='gray')
-        plt.axis('off')  # 不显示坐标轴
-        plt.savefig(os.path.join(save_dir, 'weighted_mask.png'), bbox_inches='tight', pad_inches=0)
-        plt.close()
-
-    # （3）保存整个mask加到频率域上的图片
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
     def save_frequency_domain_image(self, fft_selected, save_dir, filename="frequency_domain.png"):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-<<<<<<< HEAD
         # Calculate the magnitude of the frequency domain (magnitude)
         magnitude = torch.abs(fft_selected).mean(dim=1)  # Take the average of the channel dimension, shape: [Batch_size, h, w]
         magnitude = magnitude.detach().cpu().numpy()  # Convert to NumPy format
@@ -959,28 +793,10 @@ class ViT_MYNET(nn.Module):
             plt.close()
 
     # (4) Save the image returned to the spatial region
-=======
-        # 计算频率域的模值 (magnitude)
-        magnitude = torch.abs(fft_selected).mean(dim=1)  # 对通道维度取平均，形状为 [Batch_size, h, w]
-        magnitude = magnitude.detach().cpu().numpy()  # 转换为 NumPy 格式
-
-        # 归一化到 [0, 1] 范围
-        magnitude_normalized = (magnitude - magnitude.min()) / (magnitude.max() - magnitude.min())
-
-        # 保存每个样本的频率域图像
-        for i in range(magnitude_normalized.shape[0]):
-            plt.imshow(magnitude_normalized[i], cmap='gray')
-            plt.axis('off')  # 不显示坐标轴
-            plt.savefig(os.path.join(save_dir, f"{filename}_sample_{i}.png"), bbox_inches='tight', pad_inches=0)
-            plt.close()
-
-    # （4）保存返回到空间区域的图片
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
     def save_spatial_domain_images(self, ifft_selected, save_dir):
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-<<<<<<< HEAD
         # Convert to NumPy format
         images = ifft_selected.detach().cpu().numpy()  # Convert to NumPy format, shape: [Batch_size, 3, h, w]
 
@@ -992,34 +808,16 @@ class ViT_MYNET(nn.Module):
             # Save the image
             plt.imshow(image)
             plt.axis('off')  # Do not display the coordinates
-=======
-        # 转换为 NumPy 格式
-        images = ifft_selected.detach().cpu().numpy()  # 转为 NumPy 格式，形状为 [Batch_size, 3, h, w]
-
-        # 对每张图片保存
-        for i in range(images.shape[0]):
-            image = images[i].transpose(1, 2, 0)  # 转换为 [h, w, 3] 格式
-            image = (image - image.min()) / (image.max() - image.min())  # 归一化到 [0, 1]
-
-            # 保存图片
-            plt.imshow(image)
-            plt.axis('off')  # 不显示坐标轴
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
             plt.savefig(os.path.join(save_dir, f"spatial_image_{i}.png"), bbox_inches='tight', pad_inches=0)
             plt.close()
 
     def get_Frequency_mask(self, input):
 
-<<<<<<< HEAD
         # # Save the image after de-normalization
-=======
-        # # 保存进行反归一化之后图片
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         # save_dir = "/home/jyw/SuperMan/PriViLege_Clear/models/Ouptput/images"
         # self.save_batch_as_images(input, save_dir)
         # sys.exit()
 
-<<<<<<< HEAD
         # Perform Fourier transform on the h and w dimensions
         fft_im = torch.fft.fftn(input, dim=(-2, -1))  # 2D Fourier transform
         fft_im_center = torch.fft.fftshift(fft_im, dim=(-2, -1))  # Shift the zero frequency to the center
@@ -1052,45 +850,10 @@ class ViT_MYNET(nn.Module):
         ring_masks = torch.stack(ring_masks, dim=0).to(input.device)  # [10, h, w]
 
         # # Save the 10 masks obtained
-=======
-        # 对 h 和 w 维度做傅里叶变换
-        fft_im = torch.fft.fftn(input, dim=(-2, -1))  # 2D 傅里叶变换
-        fft_im_center = torch.fft.fftshift(fft_im, dim=(-2, -1))  # 将频谱零频率移到中心
-
-        # 构建网格以计算每个点到频谱中心的距离
-        Batch_size, channels, h, w = input.shape
-        y, x = torch.meshgrid(torch.arange(h), torch.arange(w), indexing='ij')
-        center_y, center_x = h // 2, w // 2  # 频谱中心
-        distances = torch.sqrt((y - center_y) ** 2 + (x - center_x) ** 2)  # 距离矩阵
-        distances = distances.to(input.device)  # 确保设备一致
-
-        # 创建圆环掩码，允许一定的容差范围
-        beta = 4.0
-        ring_masks = []  # 存储每个圆环的掩码
-        for i, radius in enumerate(self.radii):
-            if i == 0:
-                inner_radius = 0  # 第一个圆环从中心开始
-            else:
-                inner_radius = self.radii[i - 1] + 1e-6  # 确保不重叠
-
-            # 外半径掩码
-            outer_mask = torch.sigmoid(-beta * (distances - radius))
-            # 内半径掩码
-            inner_mask = torch.sigmoid(-beta * (distances - inner_radius))
-            # 圆环掩码
-            ring_mask = outer_mask - inner_mask
-            ring_masks.append(ring_mask.float())  # 转为浮点数，方便后续操作
-
-        # 将掩码堆叠为 [10, h, w] 的张量
-        ring_masks = torch.stack(ring_masks, dim=0).to(input.device)  # [10, h, w]
-
-        # # 保存获得的10个mask
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         # save_dir = "/home/jyw/SuperMan/PriViLege_Clear/models/Ouptput/ring_masks"
         # self.save_ring_masks_as_images(ring_masks, save_dir)
         # sys.exit()
 
-<<<<<<< HEAD
         # Weight each ring, at this time, to run the best performance, the temperature is temporarily removed
         # weights_normalized = torch.softmax(self.weights, dim=0)  # Normalize the weights
      
@@ -1100,31 +863,15 @@ class ViT_MYNET(nn.Module):
         final_mask = weighted_ring_masks.sum(dim=0)  # [h, w]
 
         # # Save the 10 masks obtained
-=======
-        # 使用权重对每个圆环加权，此时为了跑最牛性能，把温度给暂时去除
-        # weights_normalized = torch.softmax(self.weights, dim=0)  # 权重归一化
-     
-        weights_normalized = torch.softmax(self.weights * self.args.temperature, dim=0)  # 权重归一化
-        weighted_ring_masks = weights_normalized[:, None, None] * ring_masks  # 权重加权的掩码
-        # 对加权掩码求和，得到整体频率掩码
-        final_mask = weighted_ring_masks.sum(dim=0)  # [h, w]
-
-        # # 保存获得的10个mask
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         # save_dir = "/home/jyw/SuperMan/PriViLege_Clear/models/Ouptput/ring_masks_weighted"
         # self.save_weighted_mask(final_mask, save_dir)
         # sys.exit() 
 
-<<<<<<< HEAD
         # Apply the frequency mask
-=======
-        # 应用频率掩码
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         fft_selected = fft_im_center * final_mask[None, None, :, :]  # 广播到 [Batch_size, 3, h, w]
 
         # save_dir = "/home/jyw/SuperMan/PriViLege_Clear/models/Ouptput/fft_selected_firstbatch"
         # self.save_frequency_domain_image(fft_selected, save_dir)
-<<<<<<< HEAD
         # sys.exit()  # Only keep the first batch
 
         # (3) Use the residual operation
@@ -1138,21 +885,6 @@ class ViT_MYNET(nn.Module):
 
         # # (2) Operate directly in the frequency domain
         # fft_combined = fft_im_center + fft_selected  # Original frequency image and frequency ring masked frequency叠加
-=======
-        # sys.exit()  # 只保留第一个batch的
-
-        # （3）运用残差操作
-        fft_residual = fft_im_center + fft_selected  # 原始频率 + 加权圆环
-        ifft_residual = torch.fft.ifftn(torch.fft.ifftshift(fft_residual, dim=(-2, -1)), dim=(-2, -1))
-        ifft_residual = torch.abs(ifft_residual)  # [Batch_size, 3, h, w]
-        output = input + (ifft_residual - input) * 0.1
-        # 多了一步，把圆环加到input频率域上，返回到空间域，再减去input。获得学习到的信息。
-        # 来源于，我想把圆环加到input的频率域上，直接作为接下来的input。
-        return output
-
-        # # （2）直接在频率域操作
-        # fft_combined = fft_im_center + fft_selected  # 原始频率图像与掩码加权的频率圆环叠加
->>>>>>> 4441baac195d26682a5a7d6c624461fc0a82e6ea
         # ifft_combined = torch.fft.ifftn(torch.fft.ifftshift(fft_combined, dim=(-2, -1)), dim=(-2, -1))
         # ifft_combined = torch.abs(ifft_combined)  # [Batch_size, 3, h, w]
         # return ifft_combined
