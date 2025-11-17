@@ -1,6 +1,7 @@
 
 # import new Network name here and add in model_class args
 import time
+import math
 
 # from .Network import MYNET
 
@@ -97,8 +98,22 @@ def replace_base_fc(trainset, transform, model, args):
     print("[Replace Base FC - Original]")
     model = model.eval()
 
-    trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=128,
-                                              num_workers=4, pin_memory=True, shuffle=False)
+    base_batch_size = getattr(args, "replace_fc_batch_size", 128)
+    num_generators = max(1, getattr(model, "num_prompt_generators", 1))
+    reference_generators = getattr(args, "replace_fc_reference_generators", 30)
+    scale_factor = max(1, math.ceil(num_generators / max(1, reference_generators)))
+    adaptive_batch_size = max(1, base_batch_size // scale_factor)
+
+    if adaptive_batch_size < base_batch_size:
+        print(f"[Replace Base FC] Adaptive batch size {adaptive_batch_size} (scale_factor={scale_factor}) to reduce memory usage.")
+
+    trainloader = torch.utils.data.DataLoader(
+        dataset=trainset,
+        batch_size=adaptive_batch_size,
+        num_workers=4,
+        pin_memory=True,
+        shuffle=False,
+    )
     trainloader.dataset.transform = transform
     embedding_list = []
     label_list = []
