@@ -28,6 +28,7 @@ class Trainer(object, metaclass=abc.ABCMeta):
         # self.trlog['max_acc_epoch'] = 0
         self.trlog['max_acc_epoch'] = [0] * args.sessions
         self.trlog['max_acc'] = [0.0] * args.sessions
+        self.trlog['novel_acc'] = [0.0] * (args.sessions - 1)
 
         # self.trlog['session_epoch_test_acc'] = [0.0] * args.sessions
         # self.trlog['novel_epoch_test_acc'] = [] * args.sessions

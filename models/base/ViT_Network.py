@@ -840,7 +840,7 @@ class ViT_MYNET(nn.Module):
         params_vpt = [self.Prompt_Tokens]
         optimizer_params.append({'params': params_vpt, 'lr': self.args.lr_PromptTokens_novel})
 
-        # 分类器
+        # Classifier
         params_classsifier = [p for p in self.fc.parameters()]
         optimizer_params.append({'params': params_classsifier, 'lr': self.args.lr_new})
 
@@ -850,28 +850,30 @@ class ViT_MYNET(nn.Module):
         best_epoch = -1
         best_accuracy = 0.0
 
+        last_novel_acc = 0.0
+
         for epoch in range(epochs):
-            # 利用高斯分布生成Replay样本
+            # Use Gaussian distribution to generate Replay samples
             if self.args.RAPF == 'YES':
-                random_class_order_list = list(range(self.base_class + (session - 1) * self.way)) # 注意只是前面的增量阶段
+                random_class_order_list = list(range(self.base_class + (session - 1) * self.way)) # Note that only the previous incremental stage
                 random.shuffle(random_class_order_list)
 
             batch_id = -1
             for idx,batch in enumerate(dataloader):
                 data_imgs, data_label = [_.cuda() for _ in batch]
 
-                if self.args.RAPF == 'YES': # 使用高斯重放
+                if self.args.RAPF == 'YES': # Use Gaussian replay
                     batch_id += 1
                     sg_inputs = []
                     sg_targets = []
                     list_for_one_batch = [random_class_order_list[batch_id*2%len(random_class_order_list)], random_class_order_list[(batch_id*2+1)%len(random_class_order_list)]]
                     for i in list_for_one_batch:
-                            # 在cub数据集中，每个session会有 10*5个样本，这里我生成了1/3个
+                            # In the cub dataset, each session will have 10*5 samples, here I generated 1/3 of them
                             sg_inputs.append(sample(self.class_mean_list[i], self.class_cov_list[i], int(10), shrink=True))
-                            sg_targets.append(torch.ones(int(10), dtype=torch.long, device=self.device)*i) # label默认是这个类对应的id
+                            sg_targets.append(torch.ones(int(10), dtype=torch.long, device=self.device)*i) # label is the id of the corresponding class
                     sg_inputs = torch.cat(sg_inputs, dim=0)
                     sg_targets = torch.cat(sg_targets, dim=0)
-                    data_label = torch.cat([data_label, sg_targets], dim=0)  # 赋值给label
+                    data_label = torch.cat([data_label, sg_targets], dim=0)  # Assign to label
 
                 if self.args.RAPF == 'NO':  
                     sg_inputs=None
@@ -882,7 +884,7 @@ class ViT_MYNET(nn.Module):
                 logits = res['logit']
 
                 seen_class = self.base_class + session * self.way
-                logits = logits[:, :seen_class] #跟 test是一样的
+                logits = logits[:, :seen_class] # Same as test
 
                 loss_ce = F.cross_entropy(logits, data_label)
                 loss = loss_ce
@@ -895,8 +897,9 @@ class ViT_MYNET(nn.Module):
                 pred = torch.argmax(logits, dim=1)
                 acc = (pred == data_label).sum().item()/data_label.shape[0]*100.
                 
-            lrc = scheduler.get_last_lr()[0]  # 得到当前的学习率
+            lrc = scheduler.get_last_lr()[0]  # Get the current learning rate
             tsl, tsa, logs = test(model_test, testloader, 0, self.args, session, Mytest=False)
+            last_novel_acc = logs.get('new_acc', 0.0) * 100.0
             if tsa > best_accuracy:
                 best_accuracy = tsa
                 best_epoch = epoch
@@ -909,7 +912,7 @@ class ViT_MYNET(nn.Module):
         result_list.append('Session {}, Best test_Epoch {}, Best test_Acc {:.4f}'.format(
                     session, best_epoch, best_accuracy))
 
-        return tsa
+        return tsa, last_novel_acc
     
     def update_fc_avg(self,dataloader,class_list):
         self.eval()

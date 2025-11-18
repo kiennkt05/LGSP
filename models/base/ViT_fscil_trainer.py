@@ -249,9 +249,12 @@ class ViT_FSCILTrainer(Trainer):
                 self.model.train()
                 trainloader.dataset.transform = testloader.dataset.transform
                 # self.model.module.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), self.word_info, self.query_info)
-                tsa = self.model.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), testloader, result_list, test, self.model)
+                tsa, novel_last_acc = self.model.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), testloader, result_list, test, self.model)
                 
                 self.trlog['max_acc'][session] = float('%.3f' % (tsa * 100))
+                novel_idx = session - 1
+                if 0 <= novel_idx < len(self.trlog['novel_acc']):
+                    self.trlog['novel_acc'][novel_idx] = float('%.3f' % novel_last_acc)
                 result_list.append('Session {}, test Acc {:.3f}\n'.format(session, self.trlog['max_acc'][session]))
                 
             # NO
@@ -274,6 +277,12 @@ class ViT_FSCILTrainer(Trainer):
         result_list.append(self.trlog['max_acc'])
 
         print(self.trlog['max_acc'])
+        novel_sessions = [s for s in range(self.args.start_session, self.args.sessions) if s > 0]
+        novel_last_epoch_acc = [self.trlog['novel_acc'][s - 1] for s in novel_sessions]
+        print('Incremental novel last-epoch accuracy (%):', novel_last_epoch_acc)
+        if novel_last_epoch_acc:
+            novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
+            print('Novel last-epoch accuracy average: {:.3f}'.format(novel_avg))
 
       
         print()

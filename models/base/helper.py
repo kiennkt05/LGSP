@@ -354,7 +354,6 @@ def test(model, testloader, epoch, args, session, base_acc=0.0, Lase_No_Loss=Fal
 
     logs = dict(num_session=session + 1, acc=va, base_acc=va_base, new_acc=va_new, base_acc_given_new=va_base_given_new,
                 new_acc_given_base=va_new_given_base)
-
     return vl, va, logs
 
 def build_base_proto(train_loader, model, query_info, args):
