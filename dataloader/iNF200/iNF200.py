@@ -6,13 +6,11 @@ from torchvision import transforms
 import numpy as np
 
 class iNF200(Dataset):
-    def __init__(self, root='./', train=True,
-                 index_path=None, index=None, 
-                 base_sess=False, is_clip=False):
+    def __init__(self, root='./', train=True, index_path=None, index=None, base_session=False):
  
         self.root = os.path.expanduser(root)
         self.train = train
-        self.base_sess = base_sess
+        self.base_session = base_session
         self.data = []
         self.targets = []
         
@@ -20,7 +18,7 @@ class iNF200(Dataset):
         self._build_label_mapping()
         
         if train:
-            if base_sess:
+            if base_session:
                 self._select_by_txt(index_path)
             else:
                 self._select_by_txt(index_path)
@@ -28,7 +26,7 @@ class iNF200(Dataset):
             self._select_test_set()
 
        
-        self.transform = self._build_transform(is_clip)
+        self.transform = self._build_transform()
 
     def _build_label_mapping(self):
         
@@ -129,16 +127,7 @@ class iNF200(Dataset):
 
         self.data, self.targets = zip(*selected_data) if selected_data else ([], [])
 
-    def _build_transform(self, is_clip):
-       
-        if is_clip:
-            return transforms.Compose([
-                transforms.Resize(224),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-        
+    def _build_transform(self):
         if self.train:
             return transforms.Compose([
                 transforms.RandomResizedCrop(224),
@@ -172,14 +161,14 @@ if __name__ == '__main__':
         root="/path/to/iNF200",
         train=True,
         index=list(range(100)), 
-        base_sess=True
+        base_session=True
     )
     
     inc_dataset = iNF200Dataset(
         root="/path/to/iNF200",
         train=True,
         index_path="data/index_list/iNF200/session_2.txt",
-        base_sess=False
+        base_session=False
     )
   
     val_dataset = iNF200Dataset(

@@ -10,7 +10,7 @@ import sys
 class FGVCAircraft(Dataset):
     def __init__(self, root='./', train=True,
                  index_path=None, index=None, 
-                 base_sess=None, is_clip=False):
+                 base_session=None):
         self.root = os.path.expanduser(root)
         self.train = train
         self.data = []
@@ -21,7 +21,7 @@ class FGVCAircraft(Dataset):
         
 
         if train:
-            if base_sess:
+            if base_session:
                 # self._select_by_classes(index)
 
                 self._select_by_txt(index_path)
@@ -31,7 +31,7 @@ class FGVCAircraft(Dataset):
             self._select_by_classes(index)
 
        
-        self.transform = self._build_transform(is_clip)
+        self.transform = self._build_transform()
 
     def _pre_process(self):
       
@@ -126,16 +126,7 @@ class FGVCAircraft(Dataset):
        
         self.data, self.targets = zip(*selected_data) if selected_data else ([], [])
 
-    def _build_transform(self, is_clip):
-      
-        if is_clip:
-            return transforms.Compose([
-                transforms.Resize(224),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-        
+    def _build_transform(self):
         if self.train:
             return transforms.Compose([
                 transforms.RandomResizedCrop(224),

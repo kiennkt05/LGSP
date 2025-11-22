@@ -8,50 +8,33 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 
 class CUB200(Dataset):
-
-    def __init__(self, root='./', train=True,
-                 index_path=None, index=None, base_sess=None, is_clip=False):
+    def __init__(
+        self, root='./', train=True, index_path=None, index=None, base_session=None):
         self.root = os.path.expanduser(root)
         self.train = train  # training set or test set\
         self.labels = []
         self._pre_operate(self.root)
 
         if train:
-            if is_clip:
-                self.transform = self.transform = transforms.Compose([
-                    transforms.Resize(224),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ])
-            else:
-                self.transform = transforms.Compose([
-                    transforms.Resize(256),
-                    transforms.RandomResizedCrop(224),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(), 
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ])
-            if base_sess:
+            self.transform = transforms.Compose([
+                transforms.Resize(256),
+                transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(), 
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+            if base_session:
                 self.data, self.targets = self.SelectfromClasses(self.data, self.targets, index)
                 # self.data, self.targets = self.SelectfromTxt(self.data2label, index_path)
             else:
                 self.data, self.targets = self.SelectfromTxt(self.data2label, index_path)
         else:
-            if is_clip:
-                self.transform = transforms.Compose([
-                    transforms.Resize(224),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                ])
-            else:
-                self.transform = transforms.Compose([
-                    transforms.Resize(256),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                ])
+            self.transform = transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
            
             self.data, self.targets = self.SelectfromClasses(self.data, self.targets, index)
 
@@ -106,13 +89,13 @@ class CUB200(Dataset):
         self.data2label = {}
         if self.train:
             for k in train_idx:
-                image_path = os.path.join(root, 'CUB_200_2011/images', id2image[k])
+                image_path = os.path.normpath(os.path.join(root, 'CUB_200_2011/images', id2image[k]))
                 self.data.append(image_path)
                 self.targets.append(int(id2class[k]) - 1)
                 self.data2label[image_path] = (int(id2class[k]) - 1)
         else:
             for k in test_idx:
-                image_path = os.path.join(root, 'CUB_200_2011/images', id2image[k])
+                image_path = os.path.normpath(os.path.join(root, 'CUB_200_2011/images', id2image[k]))
                 self.data.append(image_path)
                 self.targets.append(int(id2class[k]) - 1)
                 self.data2label[image_path] = (int(id2class[k]) - 1)
@@ -122,7 +105,7 @@ class CUB200(Dataset):
         data_tmp = []
         targets_tmp = []
         for i in index:
-            img_path = os.path.join(self.root, i)
+            img_path = os.path.normpath(os.path.join(self.root, i))
             data_tmp.append(img_path)
             targets_tmp.append(data2label[img_path])
 
@@ -147,15 +130,13 @@ class CUB200(Dataset):
         image = self.transform(Image.open(path).convert('RGB'))
         return image, targets
 
-
 if __name__ == '__main__':
     txt_path = "../../data/index_list/cub200/session_1.txt"
     base_class = 100
     class_index = np.arange(base_class)
     dataroot = '~/dataloader/data'
     batch_size_base = 400
-    trainset = CUB200(root=dataroot, train=False,  index=class_index,
-                      base_sess=True)
+    trainset = CUB200(root=dataroot, train=False, index=class_index, base_session=True)
     cls = np.unique(trainset.targets)
-    trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=batch_size_base, shuffle=True, num_workers=8,
-                                              pin_memory=True)
+    trainloader = torch.utils.data.DataLoader(
+        dataset=trainset, batch_size=batch_size_base, shuffle=True, num_workers=8, pin_memory=True)

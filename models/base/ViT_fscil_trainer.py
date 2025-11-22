@@ -1,24 +1,12 @@
 from .base import Trainer
-import os.path as osp
-import torch.nn as nn
 import torch
-from .parallel import DataParallelModel, DataParallelCriterion
-import copy
-from copy import deepcopy
 import pandas as pd
-from os.path import exists as is_exists
 import time
 
 from .helper import *
 from utils import *
 from dataloader.data_utils import *
-from models.switch_module import switch_module
-from dataloader.data_manager import DataManager
-# from models.prompt import Global_Prompt_Extractor
-import sys
-
-from torch.utils.tensorboard import SummaryWriter
-# writer = SummaryWriter('runs/all_phases')
+from models.base.ViT_Network import ViT_MYNET
 
 class ViT_FSCILTrainer(Trainer):
     def __init__(self, args):
@@ -28,10 +16,10 @@ class ViT_FSCILTrainer(Trainer):
         self.set_save_path()
         self.set_log_path()
 
-        self.args = set_up_datasets(self.args)
         self.model = ViT_MYNET(self.args, mode=self.args.base_mode)
         self.model = self.model.to(self.device)
         
+        # Freeze the encoder parameters
         for p in self.model.encoder.parameters():
             p.requires_grad=False
         
@@ -54,44 +42,24 @@ class ViT_FSCILTrainer(Trainer):
 
     def get_optimizer_base(self):
         optimizer_params = []
-
         
         if self.args.pixel_prompt == "YES":
             prompt_branch_params = []
-            for prompt_net in self.model.first_pool_prompt_nets:
+            for prompt_net in self.model.prompt_generators:
                 prompt_branch_params.extend(list(prompt_net.parameters()))
 
             params_Mask = [
                 p
-                for p in list(self.model.meta_net_3.parameters())
-                + list(self.model.meta_net_2.parameters())
-                + prompt_branch_params
+                for p in prompt_branch_params
                 if p.requires_grad
             ]
-            optimizer_params.append({'params': params_Mask, 'lr': self.args.lr_InsVP})
-
-        if self.args.Block_prompt == "YES":
-            params_Block_9_12 = [p for p in list(self.model.meta_net_block_0.parameters()) + list(self.model.meta_net_block_1.parameters()) + list(self.model.meta_net_block_2.parameters()) + list(self.model.meta_net_block_3.parameters()) if p.requires_grad]
-            optimizer_params.append({'params': params_Block_9_12, 'lr': self.args.lr_Block})
-        
-        if self.args.prompt_pool == True:
-            params_l2p_prompt = [p for p in self.model.prompt_l2p.parameters() if p.requires_grad]
-            optimizer_params.append({'params': params_l2p_prompt, 'lr': self.args.lr_prompt_l2p})
-
+            optimizer_params.append({'params': params_Mask, 'lr': self.args.lr_local})
   
         if self.args.Frequency_mask:
             params_Frequency_mask = [self.model.weights]
             optimizer_params.append({'params': params_Frequency_mask, 'lr': self.args.lr_Frequency_mask})
-        
-        if self.args.FFN_input_30prompts:
-            params_FFN_input_30prompts = [
-                p for p in list(self.model.ffn_input.parameters()) + list(self.model.ffn_30prompts.parameters()) 
-                if p.requires_grad
-            ]
-            optimizer_params.append({'params': params_FFN_input_30prompts, 'lr': self.args.lr_FFN_input_30prompts})
 
-
-        if self.args.test1:
+        if self.args.adaptive_weighting:
             params_test1 = [self.model.alpha, self.model.beta]
             optimizer_params.append({'params': params_test1, 'lr': 0.1})
         # VPT
@@ -99,7 +67,7 @@ class ViT_FSCILTrainer(Trainer):
         optimizer_params.append({'params': params_vpt, 'lr': self.args.lr_PromptTokens_base})
 
   
-        params_classsifier = [p for p in self.model.fc.parameters()]
+        params_classsifier = [p for p in self.model.classifier_head.parameters()]
         optimizer_params.append({'params': params_classsifier, 'lr': self.args.lr_base})
 
         optimizer = torch.optim.Adam(optimizer_params)
@@ -116,11 +84,8 @@ class ViT_FSCILTrainer(Trainer):
 
     def get_dataloader(self, session):
         if session == 0:
-            trainset, trainloader, testloader = get_base_dataloader(self.args)
-        else:
-            trainset, trainloader, testloader = get_new_dataloader(self.args, session)
-        
-        return trainset, trainloader, testloader
+            return get_base_dataloader(self.args)
+        return get_new_dataloader(self.args, session)
 
     def train(self):
         args = self.args
@@ -131,66 +96,28 @@ class ViT_FSCILTrainer(Trainer):
         print("[Start Session: {}] [Sessions: {}]".format(args.start_session, args.sessions))
         
         for session in range(args.start_session, args.sessions):
-            
             train_set, trainloader, testloader = self.get_dataloader(session)
             print(f"Session: {session} Data Config")
             print(len(train_set.targets))
             if session == 0:
-                for p in self.model.meta_net_3.parameters():
-                    p.requires_grad = False
-
-                # YES --> 
                 if self.args.pixel_prompt == "YES":
                     checkpoint_path = "run_script/meta_net_2_params_lastBaseEpoch.pth"
                     state_dict = torch.load(checkpoint_path, map_location=self.device)
 
-                    self.model.meta_net_2.load_state_dict(state_dict)
-                    for prompt_net in self.model.first_pool_prompt_nets:
+                    for prompt_net in self.model.prompt_generators:
                         prompt_net.load_state_dict(state_dict)
-                  
-                
-            if session > 0: 
-                for p in self.model.meta_net_3.parameters():
-                    p.requires_grad = False
-
-                # YES  -->             
+            if session > 0:
                 if self.args.pixel_prompt == "YES":
-                    for p in self.model.meta_net_2.parameters():
-                        p.requires_grad = False
-                    for prompt_net in self.model.first_pool_prompt_nets:
+                    for prompt_net in self.model.prompt_generators:
                         for p in prompt_net.parameters():
                             p.requires_grad = False
 
-                # NO
-                if self.args.Block_prompt == "YES":
-                    for p in self.model.meta_net_block_0.parameters():
-                        p.requires_grad = False
-                    for p in self.model.meta_net_block_1.parameters():
-                        p.requires_grad = False
-                    for p in self.model.meta_net_block_2.parameters():
-                        p.requires_grad = False
-                    for p in self.model.meta_net_block_3.parameters():
-                        p.requires_grad = False
-
-                # FALSE
-                if self.args.prompt_pool:
-                    for p in self.model.prompt_l2p.parameters():
-                        p.requires_grad = False
-
-                # TRUE  --> 
                 if self.args.Frequency_mask:
                     self.model.weights.requires_grad = True
                     # for p in self.model.AdaptiveFrequencyMask.parameters():
                     #     p.requires_grad = False
 
-                # FALSE
-                if self.args.FFN_input_30prompts:
-                    for p in list(self.model.ffn_input.parameters()) + list(self.model.ffn_30prompts.parameters()): 
-                        p.requires_grad = False
-
-            #todo ===============================================
             if session == 0:  # load base class train img label
-                
                 print('new classes for this session:\n', np.unique(train_set.targets))
                 optimizer, scheduler = self.get_optimizer_base()
                 
@@ -202,21 +129,20 @@ class ViT_FSCILTrainer(Trainer):
                 for epoch in range(args.epochs_base):
                     start_time = time.time()
                     # train base sess
-                    tl, ta = base_train(self.model, trainloader, optimizer, scheduler, epoch, np.unique(train_set.targets), args)
-                    tsl, tsa, logs = test(self.model, testloader, epoch, args, session, Mytest=False)
+                    train_loss, train_acc = base_train(self.model, trainloader, optimizer, scheduler, epoch, np.unique(train_set.targets), args)
+                    test_loss, test_acc, logs = test(self.model, testloader, args, session)
 
                     # self.writer.add_scalar('Accuracy/Base_Phase', tsa, epoch)
 
-                    if (tsa * 100) >= self.trlog['max_acc'][session]:
-                        self.trlog['max_acc'][session] = float('%.3f' % (tsa * 100))
+                    if (test_acc * 100) >= self.trlog['max_acc'][session]:
+                        self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
                         self.trlog['max_acc_epoch'][session] = epoch
-                      
                         print('********A better model is found!!**********')
                         # print('Saving model to :%s' % save_model_dir)
                     lrc = scheduler.get_last_lr()[0]
                     result_list.append(
                         'epoch:%03d,lr:%.4f,B:%.5f,N:%.5f,BN:%.5f,NB:%.5f,training_loss:%.5f,training_acc:%.5f,test_loss:%.5f,test_acc:%.5f' % (
-                            epoch, lrc, logs['base_acc'], logs['new_acc'], logs['base_acc_given_new'], logs['new_acc_given_base'], tl, ta*100, tsl, tsa*100
+                            epoch, lrc, logs['base_acc'], logs['new_acc'], logs['base_acc_given_new'], logs['new_acc_given_base'], train_loss, train_acc*100, test_loss, test_acc*100
                         )
                     )
                     print('This epoch takes %d seconds' % (time.time() - start_time),
@@ -229,13 +155,11 @@ class ViT_FSCILTrainer(Trainer):
 
                 #*=======================================================================================
                 if not args.not_data_init:
-                    # if not args.pret_clip:
                     self.model = replace_base_fc(train_set, testloader.dataset.transform, self.model, args)
                     self.model.mode = 'avg_cos'
-                    tsl, tsa, logs = test(self.model, testloader, 0, args, session, Mytest=False)
-                    self.trlog['max_acc'][session] = float('%.3f' % (tsa * 100))
-                    result_list.append('After Prototype FC: test_loss:%.5f,test_acc:%.5f\n' % (tsl, tsa))
-
+                    test_loss, test_acc, logs = test(self.model, testloader, args, session)
+                    self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
+                    result_list.append('After Prototype FC: test_loss:%.5f,test_acc:%.5f\n' % (test_loss, test_acc))
             else:  # incremental learning sessions
                 print("Incremental session: [%d]" % session)
                 print("#"*50)
@@ -249,49 +173,37 @@ class ViT_FSCILTrainer(Trainer):
                 self.model.train()
                 trainloader.dataset.transform = testloader.dataset.transform
                 # self.model.module.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), self.word_info, self.query_info)
-                tsa, novel_last_acc = self.model.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), testloader, result_list, test, self.model)
+                test_acc, novel_last_acc = self.model.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), testloader, result_list, test, self.model)
                 
-                self.trlog['max_acc'][session] = float('%.3f' % (tsa * 100))
+                self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
                 novel_idx = session - 1
                 if 0 <= novel_idx < len(self.trlog['novel_acc']):
                     self.trlog['novel_acc'][novel_idx] = float('%.3f' % novel_last_acc)
                 result_list.append('Session {}, test Acc {:.3f}\n'.format(session, self.trlog['max_acc'][session]))
-                
-            # NO
-            if self.args.RAPF == 'YES':
-               
-                sample_loader = get_dataloader_RAPF(self.args, session)
-                sample_data = []
-                sample_target = []
-                with torch.no_grad():
-                    tqdm_gen = tqdm(sample_loader)
-                    for i, batch in enumerate(tqdm_gen, 1):
-                        data, label = [_.to(self.device) for _ in batch]
-                        logits = self.model(data)
-                        sample_data.append(logits)
-                        sample_target.append(label)
-                    sample_target = torch.cat(sample_target, dim=0)
-                    sample_data = torch.cat(sample_data, dim=0)
-                    self.model.analyze_mean_cov(sample_data, sample_target)
-
         result_list.append(self.trlog['max_acc'])
 
-        print(self.trlog['max_acc'])
+        print("#"*50)
+        print("#"*17 + "END OF TRAINING" + "#"*18)
+        print("#"*50)
+
         novel_sessions = [s for s in range(self.args.start_session, self.args.sessions) if s > 0]
         novel_last_epoch_acc = [self.trlog['novel_acc'][s - 1] for s in novel_sessions]
-        print('Incremental novel last-epoch accuracy (%):', novel_last_epoch_acc)
-        if novel_last_epoch_acc:
-            novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
-            print('Novel last-epoch accuracy average: {:.3f}'.format(novel_avg))
 
-      
+        print('Incremental Novel last-epoch accuracy (%):\n', novel_last_epoch_acc)
+        print('Last session test accuracy:\n', self.trlog['max_acc'])
+        if self.args.adaptive_weighting:
+            print('Adaptive weights: (alpha, beta) = ({}, {})'.format(self.model.alpha, self.model.beta))
         print()
         max_acc = self.trlog['max_acc']
         first_value = max_acc[0]
-        last_value = max_acc[-1]
         average = sum(max_acc) / len(max_acc)
-        print(f"{first_value:.3f}  {last_value:.3f}  {average:.3f}")
-        
+        if novel_last_epoch_acc:
+            novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
+        print("#"*50)
+        print("#"*18 + "Final Results" + "#"*19)
+        print("#"*50)
+        print("#"*12 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + "#"*12)
+        print("#"*50)
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()
@@ -308,26 +220,22 @@ class ViT_FSCILTrainer(Trainer):
         if not self.args.not_data_init:
             mode = mode + '-' + 'data_init'
 
-        self.args.save_path = '%s/%s/' % (self.args.dataset, time.strftime("%Y%m%d_%H%M%S"))
-        if self.args.vit:
-            self.args.save_path = self.args.save_path + '%s/' % (self.args.project+'_ViT_Ours')
-        else:
-            self.args.save_path = self.args.save_path + '%s/' % self.args.project
+        self.args.save_path = '%s/%s/' % (self.args.dataset, time.strftime("%Y%m%d_%H%M%S")) + 'base_ViT_Ours/'
 
         self.args.save_path = self.args.save_path + '%s-start_%d/' % (mode, self.args.start_session)
         if self.args.schedule == 'Milestone':
             mile_stone = str(self.args.milestones).replace(" ", "").replace(',', '_')[1:-1]
-            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-MS_%s-Gam_%.2f-Bs_%d-Mom_%.2f-Wd_%.5f-seed_%d' % (
+            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-MS_%s-Gam_%.2f-Bs_%d-seed_%d' % (
                 self.args.epochs_base, self.args.lr_base, mile_stone, self.args.gamma, self.args.batch_size_base,
-                self.args.momentum, self.args.decay, self.args.seed)
+                self.args.seed)
         elif self.args.schedule == 'Step':
-            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-Step_%d-Gam_%.2f-Bs_%d-Mom_%.2f-Wd_%.5f-seed_%d' % (
+            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-Step_%d-Gam_%.2f-Bs_%d-seed_%d' % (
                 self.args.epochs_base, self.args.lr_base, self.args.step, self.args.gamma, self.args.batch_size_base,
-                self.args.momentum, self.args.decay, self.args.seed)
+                self.args.seed)
         else:
-            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-COS_%d-Gam_%.2f-Bs_%d-Mom_%.2f-Wd_%.5f-seed_%d' % (
+            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-COS_%d-Gam_%.2f-Bs_%d-seed_%d' % (
                 self.args.epochs_base, self.args.lr_base, self.args.step, self.args.gamma, self.args.batch_size_base,
-                self.args.momentum, self.args.decay, self.args.seed)
+                self.args.seed)
         if 'cos' in mode:
             self.args.save_path = self.args.save_path + '-T_%.2f' % (self.args.temperature)
 
@@ -335,17 +243,13 @@ class ViT_FSCILTrainer(Trainer):
             self.args.save_path = self.args.save_path + '-ftLR_%.3f-ftEpoch_%d' % (
                 self.args.lr_new, self.args.epochs_new)
 
-        if self.args.debug:
-            self.args.save_path = os.path.join('debug', self.args.save_path)
-
         self.args.save_path = os.path.join(f'checkpoint/{self.args.out}', self.args.save_path)
         ensure_path(self.args.save_path)
         return None
 
     def set_log_path(self):
         if self.args.model_dir is not None:
-            self.args.save_log_path = '%s/' % self.args.project
-            self.args.save_log_path = self.args.save_log_path + '%s' % self.args.dataset
+            self.args.save_log_path = 'base/' + '%s' % self.args.dataset
             if 'avg' in self.args.new_mode:
                 self.args.save_log_path = self.args.save_log_path + '_prototype_' + self.args.model_dir.split('/')[-2][:7] + '/'
             if 'ft' in self.args.new_mode:

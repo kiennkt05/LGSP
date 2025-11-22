@@ -11,8 +11,7 @@ from torchvision import transforms
 class MiniImageNet(Dataset):
 
     def __init__(self, root='./data', train=True,
-                 transform=None,
-                 index_path=None, index=None, base_sess=None, is_clip=False):
+                 transform=None, index_path=None, index=None, base_session=None):
         if train:
             setname = 'train'
         else:
@@ -57,7 +56,7 @@ class MiniImageNet(Dataset):
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                     std=[0.229, 0.224, 0.225])])
-            if base_sess:
+            if base_session:
                 self.data, self.targets = self.SelectfromClasses(self.data, self.targets, index)
             else:
                 self.data, self.targets = self.SelectfromTxt(self.data2label, index_path)

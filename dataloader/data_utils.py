@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from dataloader.sampler import CategoriesSampler
 
 def set_up_datasets(args):
     if args.dataset == 'cifar100':
@@ -38,128 +37,39 @@ def set_up_datasets(args):
         args.way = 10
         args.shot = 5
         args.sessions = 11 
-    args.Dataset=Dataset
+    args.Dataset = Dataset
     return args
 
-def get_dataloader(args,session):
+def get_dataloader(args, session):
     if session == 0:
         trainset, trainloader, testloader = get_base_dataloader(args)
     else:
-        trainset, trainloader, testloader = get_new_dataloader(args)
+        trainset, trainloader, testloader = get_new_dataloader(args, session)
     return trainset, trainloader, testloader
 
 def get_base_dataloader(args, clip_trsf=None):
     txt_path = "data/index_list/" + args.dataset + "/session_" + str(0 + 1) + '.txt'
     class_index = np.arange(args.base_class)
     if args.dataset == 'cifar100':
-
-        if args.clip:
-            trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=True, transform=clip_trsf,
-                                            index=class_index, base_sess=True,is_vit=args.vit, is_clip=args.clip)
-            testset = args.Dataset.CIFAR100(root=args.dataroot, train=False, download=False,
-                                            index=class_index, base_sess=True,is_vit=args.vit, is_clip=args.clip)
-        else:
-            trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=True, transform=clip_trsf,
-                                         index=class_index, base_sess=True,is_vit=args.vit, is_clip=args.clip)
-            testset = args.Dataset.CIFAR100(root=args.dataroot, train=False, download=False,
-                                            index=class_index, base_sess=True,is_vit=args.vit, is_clip=args.clip)
-
-    if args.dataset == 'cub200':
-        trainset = args.Dataset.CUB200(root=args.dataroot, train=True,
-                                       index=class_index, base_sess=True, is_clip=args.clip)
-        
-      
-        testset = args.Dataset.CUB200(root=args.dataroot, train=False, index=class_index, is_clip=args.clip)
-    if args.dataset == 'FGVCAircraft':
-      
-        trainset = args.Dataset.FGVCAircraft(root=args.dataroot, train=True, 
-            index_path=txt_path, base_sess=True, is_clip=args.clip)
-        testset = args.Dataset.FGVCAircraft(root=args.dataroot, train=False, 
-                                            index=class_index, is_clip=args.clip)
-        
-       
-        
-    if args.dataset == 'iNF200':
-       
-        trainset = args.Dataset.iNF200(root=args.dataroot, train=True, 
-            index_path=txt_path, base_sess=True, is_clip=args.clip)
-        testset = args.Dataset.iNF200(root=args.dataroot, train=False, 
-                                            index=class_index, is_clip=args.clip)
-        
-     
-
-    if args.dataset == 'mini_imagenet':
-        trainset = args.Dataset.MiniImageNet(root=args.dataroot, train=True,
-                                             index=class_index, base_sess=True, is_clip=args.clip)
-        testset = args.Dataset.MiniImageNet(root=args.dataroot, train=False, index=class_index, is_clip=args.clip)
-    
-
-    trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=args.batch_size_base, shuffle=True,
-                                              num_workers=args.num_workers)
-    testloader = torch.utils.data.DataLoader(
-        dataset=testset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
-
-    return trainset, trainloader, testloader
-
-def get_dataloader_RAPF(args, session):
-    if session == 0:
-        class_index = np.arange(args.base_class)
-        if args.dataset == 'cub200':
-            trainset = args.Dataset.CUB200(root=args.dataroot, train=True,
-                                        index=class_index, base_sess=True, is_clip=args.clip)
-      
-        trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=args.batch_size_base, shuffle=False,
-                                                num_workers=4)
-        return trainloader
-    else:
-        txt_path = "data/index_list/" + args.dataset + "/session_" + str(session + 1) + '.txt'
-        if args.dataset == 'cub200':
-            trainset = args.Dataset.CUB200(root=args.dataroot, train=True,
-                                        index_path=txt_path, is_clip=args.clip)
-        # trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=args.batch_size_new, shuffle=False,
-        #                                           num_workers=args.num_workers)
-        if args.batch_size_new == 0:
-            batch_size_new = trainset.__len__()
-            trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=batch_size_new, shuffle=False,
-                                                    num_workers=args.num_workers)
-        # else:
-        #     trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=args.batch_size_new, shuffle=True,
-        #                                             num_workers=args.num_workers)
-        return trainloader
-
-
-def get_standard_data_loader(args):
-    #todo for the standard CIL Data
-    pass
-
-def get_base_dataloader_meta(args):
-   
-    txt_path = "data/index_list/" + args.dataset + "/session_" + str(0 + 1) + '.txt'
-    class_index = np.arange(args.base_class)
-    if args.dataset == 'cifar100':
-        trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=True,
-                                         index=class_index, base_sess=True,is_vit=args.vit, is_clip=args.clip)
+        trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=True, transform=clip_trsf,
+                                        index=class_index, base_session=True)
         testset = args.Dataset.CIFAR100(root=args.dataroot, train=False, download=False,
-                                        index=class_index, base_sess=True,is_vit=args.vit, is_clip=args.clip)
-
-    if args.dataset == 'cub200':
-        trainset = args.Dataset.CUB200(root=args.dataroot, train=True,
-                                       index_path=txt_path, is_clip=args.clip)
-        testset = args.Dataset.CUB200(root=args.dataroot, train=False,
-                                      index=class_index, is_clip=args.clip)
-    if args.dataset == 'mini_imagenet':
-        trainset = args.Dataset.MiniImageNet(root=args.dataroot, train=True,
-                                             index_path=txt_path, is_clip=args.clip)
-        testset = args.Dataset.MiniImageNet(root=args.dataroot, train=False,
-                                            index=class_index, is_clip=args.clip)
-
-
-    # DataLoader(test_set, batch_sampler=sampler, num_workers=8, pin_memory=True)
-    sampler = CategoriesSampler(trainset.targets, args.train_episode, args.episode_way,
-                                args.episode_shot + args.episode_query)
-
-    trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_sampler=sampler, num_workers=args.num_workers)
-
+                                        index=class_index, base_session=True)
+    elif args.dataset == 'cub200':
+        trainset = args.Dataset.CUB200(root=args.dataroot, train=True, index=class_index, base_session=True)
+        testset = args.Dataset.CUB200(root=args.dataroot, train=False, index=class_index)
+    elif args.dataset == 'FGVCAircraft':
+        trainset = args.Dataset.FGVCAircraft(root=args.dataroot, train=True, index_path=txt_path, base_session=True)
+        testset = args.Dataset.FGVCAircraft(root=args.dataroot, train=False, index=class_index)
+    elif args.dataset == 'iNF200':
+        trainset = args.Dataset.iNF200(root=args.dataroot, train=True, index_path=txt_path, base_session=True)
+        testset = args.Dataset.iNF200(root=args.dataroot, train=False, index=class_index)
+    elif args.dataset == 'mini_imagenet':
+        trainset = args.Dataset.MiniImageNet(root=args.dataroot, train=True, index=class_index, base_session=True)
+        testset = args.Dataset.MiniImageNet(root=args.dataroot, train=False, index=class_index)
+    
+    trainloader = torch.utils.data.DataLoader(
+        dataset=trainset, batch_size=args.batch_size_base, shuffle=True, num_workers=args.num_workers)
     testloader = torch.utils.data.DataLoader(
         dataset=testset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
 
@@ -168,32 +78,28 @@ def get_base_dataloader_meta(args):
 def get_new_dataloader(args, session, clip_trsf=None):
     txt_path = "data/index_list/" + args.dataset + "/session_" + str(session + 1) + '.txt'
     if args.dataset == 'cifar100':
-        if args.clip:
-            class_index = open(txt_path).read().splitlines()
-            trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=False, transform=clip_trsf,
-                                            index=class_index, base_sess=False,is_vit=args.vit, is_clip=args.clip)
-        else:
-            class_index = open(txt_path).read().splitlines()
-            trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=False,
-                                         index=class_index, base_sess=False,is_vit=args.vit, is_clip=args.clip)
-    if args.dataset == 'cub200':
-        trainset = args.Dataset.CUB200(root=args.dataroot, train=True,
-                                       index_path=txt_path, is_clip=args.clip)
-    if args.dataset == 'FGVCAircraft':
-        trainset = args.Dataset.FGVCAircraft(root=args.dataroot, train=True,
-            index_path=txt_path, is_clip=args.clip)
-        
-    if args.dataset == 'iNF200':
-        trainset = args.Dataset.iNF200(root=args.dataroot, train=True,
-            index_path=txt_path, is_clip=args.clip)
+        class_index = open(txt_path).read().splitlines()
+        trainset = args.Dataset.CIFAR100(root=args.dataroot, train=True, download=False,
+                                        index=class_index, base_session=False)
+    elif args.dataset == 'cub200':
+        trainset = args.Dataset.CUB200(
+            root=args.dataroot, train=True, index_path=txt_path)
+    elif args.dataset == 'FGVCAircraft':
+        trainset = args.Dataset.FGVCAircraft(
+            root=args.dataroot, train=True, index_path=txt_path)
+    elif args.dataset == 'iNF200':
+        trainset = args.Dataset.iNF200(
+            root=args.dataroot, train=True, index_path=txt_path)
+    elif args.dataset == 'mini_imagenet':
+        trainset = args.Dataset.MiniImageNet(
+            root=args.dataroot, train=True, index_path=txt_path)
+    else:
+        raise ValueError(f"Dataset {args.dataset} not supported")
     
-    if args.dataset == 'mini_imagenet':
-        trainset = args.Dataset.MiniImageNet(root=args.dataroot, train=True,
-                                       index_path=txt_path, is_clip=args.clip)
     if args.batch_size_new == 0:
         batch_size_new = trainset.__len__()
-        trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=batch_size_new, shuffle=False,
-                                                  num_workers=args.num_workers)
+        trainloader = torch.utils.data.DataLoader(
+            dataset=trainset, batch_size=batch_size_new, shuffle=False, num_workers=args.num_workers)
     else:
         trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=args.batch_size_new, shuffle=True,
                                                   num_workers=args.num_workers)
@@ -202,29 +108,23 @@ def get_new_dataloader(args, session, clip_trsf=None):
     class_new = get_session_classes(args, session)
 
     if args.dataset == 'cifar100':
-        if args.clip:
-            testset = args.Dataset.CIFAR100(root=args.dataroot, train=False, download=False,
-                                            index=class_new, base_sess=False,is_vit=args.vit, is_clip=args.clip)
-        else:
-            testset = args.Dataset.CIFAR100(root=args.dataroot, train=False, download=False, transform=clip_trsf,
-                                            index=class_new, base_sess=False,is_vit=args.vit, is_clip=args.clip)
-    if args.dataset == 'cub200':
-        testset = args.Dataset.CUB200(root=args.dataroot, train=False,
-                                      index=class_new, is_clip=args.clip)
-    if args.dataset == 'FGVCAircraft':
-        testset = args.Dataset.FGVCAircraft(root=args.dataroot, train=False,
-            index=class_new, is_clip=args.clip)
-    
-    if args.dataset == 'iNF200':
-        testset = args.Dataset.iNF200(root=args.dataroot, train=False,
-            index=class_new, is_clip=args.clip)
-        
-    if args.dataset == 'mini_imagenet':
-        testset = args.Dataset.MiniImageNet(root=args.dataroot, train=False,
-                                      index=class_new, is_clip=args.clip)
+        testset = args.Dataset.CIFAR100(root=args.dataroot, train=False, download=False, transform=clip_trsf,
+                                        index=class_new, base_session=False)
+    elif args.dataset == 'cub200':
+        testset = args.Dataset.CUB200(
+            root=args.dataroot, train=False, index=class_new)
+    elif args.dataset == 'FGVCAircraft':
+        testset = args.Dataset.FGVCAircraft(
+            root=args.dataroot, train=False, index=class_new)
+    elif args.dataset == 'iNF200':
+        testset = args.Dataset.iNF200(
+            root=args.dataroot, train=False, index=class_new)
+    elif args.dataset == 'mini_imagenet':
+        testset = args.Dataset.MiniImageNet(
+            root=args.dataroot, train=False, index=class_new)
 
-    testloader = torch.utils.data.DataLoader(dataset=testset, batch_size=args.test_batch_size, shuffle=False,
-                                             num_workers=args.num_workers)
+    testloader = torch.utils.data.DataLoader(
+        dataset=testset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
 
     return trainset, trainloader, testloader
 

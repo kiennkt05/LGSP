@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader, Sampler
 import random
 from tqdm import tqdm
 from models import *
-from collections import OrderedDict, defaultdict
-from copy import deepcopy
+from collections import OrderedDict
 
 
 _utils_pp = pprint.PrettyPrinter()

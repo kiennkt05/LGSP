@@ -50,13 +50,12 @@ class CIFAR10(VisionDataset):
     }
 
     def __init__(self, root, train=True, transform=None, target_transform=None,
-                 download=False, index=None, base_sess=None,is_vit=False, is_clip=False):
+                 download=False, index=None, base_session=None):
 
         super(CIFAR10, self).__init__(root, transform=transform,
                                       target_transform=target_transform)
         self.root = os.path.expanduser(root)
         self.train = train  # training set or test set
-        self.is_vit = is_vit
 
         if download:
             self.download()
@@ -65,40 +64,24 @@ class CIFAR10(VisionDataset):
             raise RuntimeError('Dataset not found or corrupted.' +
                                ' You can use download=True to download it')
 
-        if is_vit or is_clip:
-            mean=[0.507, 0.487, 0.441]
-            std=[0.267, 0.256, 0.276]
-            inp_size = 224
-            if self.train:
-                downloaded_list = self.train_list
-                self.transform = transforms.Compose([
-                transforms.Resize((inp_size, inp_size)),
-                transforms.RandomCrop(inp_size, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean, std),])
-            else:
-                downloaded_list = self.test_list
-                self.transform = transforms.Compose([
-                    transforms.Resize((inp_size, inp_size)),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean, std)
-                ])
+        mean=[0.507, 0.487, 0.441]
+        std=[0.267, 0.256, 0.276]
+        inp_size = 224
+        if self.train:
+            downloaded_list = self.train_list
+            self.transform = transforms.Compose([
+            transforms.Resize((inp_size, inp_size)),
+            transforms.RandomCrop(inp_size, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std),])
         else:
-            if self.train:
-                downloaded_list = self.train_list
-                self.transform = transforms.Compose([
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276])
-                ])
-            else:
-                downloaded_list = self.test_list
-                self.transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276])
-                ])
+            downloaded_list = self.test_list
+            self.transform = transforms.Compose([
+                transforms.Resize((inp_size, inp_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean, std)
+            ])
 
         self.data = []
         self.targets = []
@@ -119,7 +102,7 @@ class CIFAR10(VisionDataset):
 
         self.targets = np.asarray(self.targets)
 
-        if base_sess:
+        if base_session:
             self.data, self.targets = self.SelectfromDefault(self.data, self.targets, index)
         else:  # new Class session
             if train:
@@ -245,8 +228,8 @@ if __name__ == "__main__":
     # class_index = open(txt_path).read().splitlines()
     class_index = np.arange(60)
     trainset = CIFAR100(root=dataroot, train=True, download=True, transform=None, index=class_index,
-                        base_sess=True)
-    testset = CIFAR100(root=dataroot, train=False, download=False,index=class_index, base_sess=True)
+                        base_session=True)
+    testset = CIFAR100(root=dataroot, train=False, download=False,index=class_index, base_session=True)
     cls = np.unique(trainset.targets)
     trainloader = torch.utils.data.DataLoader(dataset=trainset, batch_size=batch_size_base, shuffle=True, num_workers=4,
                                               pin_memory=True)
