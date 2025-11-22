@@ -1,14 +1,15 @@
-from .base import Trainer
+from models.base.base import Trainer
 import torch
 import pandas as pd
 import time
 
-from .helper import *
+from models.base.helper import *
 from utils import *
 from dataloader.data_utils import *
-from models.base.ViT_Network import ViT_MYNET
+from models.rainbow.ViT_Network import ViT_Rainbow
 
-class ViT_FSCILTrainer(Trainer):
+
+class ViT_RainbowTrainer(Trainer):
     def __init__(self, args):
         super().__init__(args)
         self.args = args
@@ -16,12 +17,12 @@ class ViT_FSCILTrainer(Trainer):
         self.set_save_path()
         self.set_log_path()
 
-        self.model = ViT_MYNET(self.args, mode=self.args.base_mode)
+        self.model = ViT_Rainbow(self.args, mode=self.args.base_mode)
         self.model = self.model.to(self.device)
         
         # Freeze the encoder parameters
         for p in self.model.encoder.parameters():
-            p.requires_grad=False
+            p.requires_grad = False
         
         if self.args.model_dir is not None:
             print('Loading init parameters from: %s' % self.args.model_dir)
@@ -30,45 +31,33 @@ class ViT_FSCILTrainer(Trainer):
             print('random init params')
             if args.start_session > 0:
                 print('WARING: Random init weights for new sessions!')
-            # self.best_model_dict = deepcopy(self.model.state_dict())
     
         print("#"*50)
         trainable_params = sum(param.numel() for param in self.model.parameters() if param.requires_grad)
         self.init_params = sum(param.numel() for param in self.model.parameters())
-        print('total parameters:',self.init_params)
-        print('trainable parameters:',trainable_params)
+        print('total parameters:', self.init_params)
+        print('trainable parameters:', trainable_params)
         print("#"*50)
-        # self.writer = SummaryWriter(f'runs/all_phases_val/epoch{self.args.epochs_base}_{self.args.epochs_new}')
 
     def get_optimizer_base(self):
         optimizer_params = []
         
-        if self.args.pixel_prompt == "YES":
-            prompt_branch_params = []
-            for prompt_net in self.model.prompt_generators:
-                prompt_branch_params.extend(list(prompt_net.parameters()))
+        # Rainbow prompt parameters (base prompts for current session)
+        for layer_idx in range(len(self.model.encoder.blocks)):
+            for prompt in self.model.rainbow_prompt.base_prompts[layer_idx]:
+                if prompt.requires_grad:
+                    optimizer_params.append({'params': [prompt], 'lr': self.args.lr_base})
+        
+        # Rainbow evolution parameters
+        optimizer_params.append({'params': self.model.rainbow_prompt.evolutions.parameters(), 'lr': self.args.lr_base})
+        
+        # Rainbow gate parameters (if adaptive gating is used)
+        if self.model.rainbow_prompt.current_gate is not None:
+            optimizer_params.append({'params': self.model.rainbow_prompt.current_gate.parameters(), 'lr': self.args.lr_base})
 
-            params_Mask = [
-                p
-                for p in prompt_branch_params
-                if p.requires_grad
-            ]
-            optimizer_params.append({'params': params_Mask, 'lr': self.args.lr_local})
-  
-        if self.args.Frequency_mask:
-            params_Frequency_mask = [self.model.weights]
-            optimizer_params.append({'params': params_Frequency_mask, 'lr': self.args.lr_Frequency_mask})
-
-        if self.args.adaptive_weighting:
-            params_test1 = [self.model.alpha, self.model.beta]
-            optimizer_params.append({'params': params_test1, 'lr': 0.1})
-        # VPT
-        params_vpt = [self.model.Prompt_Tokens]
-        optimizer_params.append({'params': params_vpt, 'lr': self.args.lr_PromptTokens_base})
-
-  
-        params_classsifier = [p for p in self.model.classifier_head.parameters()]
-        optimizer_params.append({'params': params_classsifier, 'lr': self.args.lr_base})
+        # Classifier
+        params_classifier = [p for p in self.model.classifier_head.parameters()]
+        optimizer_params.append({'params': params_classifier, 'lr': self.args.lr_base})
 
         optimizer = torch.optim.Adam(optimizer_params)
 
@@ -99,46 +88,31 @@ class ViT_FSCILTrainer(Trainer):
             train_set, trainloader, testloader = self.get_dataloader(session)
             print(f"Session: {session} Data Config")
             print(len(train_set.targets))
-            if session == 0:
-                if self.args.pixel_prompt == "YES":
-                    checkpoint_path = "run_script/meta_net_2_params_lastBaseEpoch.pth"
-                    state_dict = torch.load(checkpoint_path, map_location=self.device)
-
-                    for prompt_net in self.model.prompt_generators:
-                        prompt_net.load_state_dict(state_dict)
-            if session > 0:
-                if self.args.pixel_prompt == "YES":
-                    for prompt_net in self.model.prompt_generators:
-                        for p in prompt_net.parameters():
-                            p.requires_grad = False
-
-                if self.args.Frequency_mask:
-                    self.model.weights.requires_grad = True
-                    # for p in self.model.AdaptiveFrequencyMask.parameters():
-                    #     p.requires_grad = False
-
+            
+            # Start Rainbow task for this session
+            self.model.rainbow_prompt.start_task(session)
+            
             if session == 0:  # load base class train img label
                 print('new classes for this session:\n', np.unique(train_set.targets))
                 optimizer, scheduler = self.get_optimizer_base()
                 
-                # build_base_proto(trainloader, self.model, self.query_info, args)
                 trainable_params = sum(param.numel() for param in self.model.parameters() if param.requires_grad)
-                print('[Session {}] Trainable parameters: {}'.format(session,trainable_params))
+                print('[Session {}] Trainable parameters: {}'.format(session, trainable_params))
                 print("#"*50)
             
                 for epoch in range(args.epochs_base):
+                    # Set epoch for Rainbow
+                    self.model.rainbow_prompt.set_epoch(epoch, args.epochs_base)
+                    
                     start_time = time.time()
                     # train base sess
                     train_loss, train_acc = base_train(self.model, trainloader, optimizer, scheduler, epoch, np.unique(train_set.targets), args)
                     test_loss, test_acc, logs = test(self.model, testloader, args, session)
 
-                    # self.writer.add_scalar('Accuracy/Base_Phase', tsa, epoch)
-
                     if (test_acc * 100) >= self.trlog['max_acc'][session]:
                         self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
                         self.trlog['max_acc_epoch'][session] = epoch
                         print('********A better model is found!!**********')
-                        # print('Saving model to :%s' % save_model_dir)
                     lrc = scheduler.get_last_lr()[0]
                     result_list.append(
                         'epoch:%03d,lr:%.4f,B:%.5f,N:%.5f,BN:%.5f,NB:%.5f,training_loss:%.5f,training_acc:%.5f,test_loss:%.5f,test_acc:%.5f' % (
@@ -153,6 +127,9 @@ class ViT_FSCILTrainer(Trainer):
                 result_list.append('Session {}, Test Best Epoch {},\nbest test Acc {:.4f}\n'.format(
                     session, self.trlog['max_acc_epoch'][session], self.trlog['max_acc'][session], ))
 
+                # Finalize Rainbow task
+                self.model.rainbow_prompt.finalize_task(session)
+                
                 #*=======================================================================================
                 if not args.not_data_init:
                     self.model = replace_base_fc(train_set, testloader.dataset.transform, self.model, args)
@@ -164,7 +141,7 @@ class ViT_FSCILTrainer(Trainer):
                 print("Incremental session: [%d]" % session)
                 print("#"*50)
                 trainable_params = sum(param.numel() for param in self.model.parameters() if param.requires_grad)
-                print('[Session {}] Trainable parameters: {}'.format(session,trainable_params))
+                print('[Session {}] Trainable parameters: {}'.format(session, trainable_params))
                 print("#"*50)
             
                 self.model.update_seen_classes(np.unique(train_set.targets))
@@ -172,43 +149,42 @@ class ViT_FSCILTrainer(Trainer):
                 self.model.mode = self.args.new_mode
                 self.model.train()
                 trainloader.dataset.transform = testloader.dataset.transform
-                # self.model.module.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), self.word_info, self.query_info)
                 test_acc, novel_last_acc = self.model.train_inc(trainloader, self.args.epochs_new, session, np.unique(train_set.targets), testloader, result_list, test, self.model)
+                
+                # Finalize Rainbow task
+                self.model.rainbow_prompt.finalize_task(session)
                 
                 self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
                 novel_idx = session - 1
                 if 0 <= novel_idx < len(self.trlog['novel_acc']):
-                    self.trlog['novel_acc'][novel_idx] = float('%.3f' % novel_last_acc)
+                    # Convert to percentage to match test_acc units
+                    self.trlog['novel_acc'][novel_idx] = float('%.3f' % (novel_last_acc * 100))
                 result_list.append('Session {}, test Acc {:.3f}\n'.format(session, self.trlog['max_acc'][session]))
+        
         result_list.append(self.trlog['max_acc'])
 
-        print("\n\n")
         print("#"*50)
-        print("#" + " "*16 + "END OF TRAINING" + " "*17 + "#")
+        print("#"*17 + "END OF TRAINING" + "#"*18)
         print("#"*50)
-        print("\n\n")
 
         novel_sessions = [s for s in range(self.args.start_session, self.args.sessions) if s > 0]
         novel_last_epoch_acc = [self.trlog['novel_acc'][s - 1] for s in novel_sessions]
 
         print('Incremental Novel last-epoch accuracy (%):\n', novel_last_epoch_acc)
         print('Last session test accuracy:\n', self.trlog['max_acc'])
-        if self.args.adaptive_weighting:
-            print('Adaptive weights: (alpha, beta) = ({}, {})'.format(self.model.alpha, self.model.beta))
-        
+        print()
         max_acc = self.trlog['max_acc']
         first_value = max_acc[0]
         average = sum(max_acc) / len(max_acc)
         if novel_last_epoch_acc:
             novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
-        
-        print("\n\n")
+        else:
+            novel_avg = 0.0
         print("#"*50)
-        print("#" + " "*17 + "Final Results" + " "*18 + "#")
+        print("#"*18 + "Final Results" + "#"*19)
         print("#"*50)
-        print("#" + " "*11 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + " "*11 + "#")
+        print("#"*12 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + "#"*12)
         print("#"*50)
-        print("\n\n")
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()
@@ -225,7 +201,7 @@ class ViT_FSCILTrainer(Trainer):
         if not self.args.not_data_init:
             mode = mode + '-' + 'data_init'
 
-        self.args.save_path = '%s/%s/' % (self.args.dataset, time.strftime("%Y%m%d_%H%M%S")) + 'base_ViT_Ours/'
+        self.args.save_path = '%s/%s/' % (self.args.dataset, time.strftime("%Y%m%d_%H%M%S")) + 'rainbow_ViT/'
 
         self.args.save_path = self.args.save_path + '%s-start_%d/' % (mode, self.args.start_session)
         if self.args.schedule == 'Milestone':
@@ -254,7 +230,7 @@ class ViT_FSCILTrainer(Trainer):
 
     def set_log_path(self):
         if self.args.model_dir is not None:
-            self.args.save_log_path = 'base/' + '%s' % self.args.dataset
+            self.args.save_log_path = 'rainbow/' + '%s' % self.args.dataset
             if 'avg' in self.args.new_mode:
                 self.args.save_log_path = self.args.save_log_path + '_prototype_' + self.args.model_dir.split('/')[-2][:7] + '/'
             if 'ft' in self.args.new_mode:
@@ -269,4 +245,5 @@ class ViT_FSCILTrainer(Trainer):
             if not os.path.exists(directory):
                 os.makedirs(directory)
         except OSError:
-            print ('Error: Creating directory. ' +  directory)
+            print('Error: Creating directory. ' + directory)
+

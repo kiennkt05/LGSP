@@ -71,6 +71,30 @@ def get_command_line_parser():
     parser.add_argument('-adaptive_weighting', default=False, type=bool,)
     parser.add_argument('-dataset', type=str, default='cub200',
                         choices=['mini_imagenet', 'cub200', 'cifar100', 'FGVCAircraft', 'iNF200'])
+    
+    # Method selection
+    parser.add_argument('-method', type=str, default='base',
+                        choices=['base', 'rainbow'], help='Training method: base or rainbow')
+    
+    # Rainbow-specific arguments
+    parser.add_argument('-rainbow_prompt_length', type=int, default=5,
+                        help='Length of Rainbow prompts')
+    parser.add_argument('-rainbow_proj_dim', type=int, default=None,
+                        help='Projection dimension for Rainbow (default: embed_dim // 8)')
+    parser.add_argument('-rainbow_align_hidden_dim', type=int, default=None,
+                        help='Hidden dimension for alignment (default: embed_dim // 8)')
+    parser.add_argument('-rainbow_gate_tau_start', type=float, default=1.0,
+                        help='Starting temperature for Rainbow gate')
+    parser.add_argument('-rainbow_gate_tau_end', type=float, default=0.3,
+                        help='Ending temperature for Rainbow gate')
+    parser.add_argument('-rainbow_gate_harden_at', type=float, default=0.6,
+                        help='Epoch ratio to harden Rainbow gate')
+    parser.add_argument('-rainbow_lambda_sparse', type=float, default=0.0,
+                        help='Sparsity regularization weight for Rainbow')
+    parser.add_argument('-rainbow_save_dir', type=str, default='./checkpoint/rainbow_prompts',
+                        help='Directory to save Rainbow prompts')
+    parser.add_argument('-rainbow_use_paper_evolution', action='store_true',
+                        help='Use paper evolution mode for Rainbow')
 
     return parser
 
@@ -83,6 +107,19 @@ if __name__ == '__main__':
     pprint(vars(args))
     args.num_gpu = set_gpu(args)
     
-    from models.base.ViT_fscil_trainer import ViT_FSCILTrainer
-    trainer = ViT_FSCILTrainer(args)
+    # Set default Rainbow dimensions if not specified
+    if args.method == 'rainbow':
+        if args.rainbow_proj_dim is None:
+            # Default to embed_dim // 8 (embed_dim is typically 768 for ViT-Base)
+            args.rainbow_proj_dim = 768 // 8
+        if args.rainbow_align_hidden_dim is None:
+            args.rainbow_align_hidden_dim = 768 // 8
+    
+    if args.method == 'rainbow':
+        from models.rainbow.ViT_fscil_trainer import ViT_RainbowTrainer
+        trainer = ViT_RainbowTrainer(args)
+    else:
+        from models.base.ViT_fscil_trainer import ViT_FSCILTrainer
+        trainer = ViT_FSCILTrainer(args)
+    
     trainer.train()
