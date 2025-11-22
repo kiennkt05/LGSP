@@ -33,20 +33,29 @@ class RainbowPromptModule(nn.Module):
         enable_alignment: bool = True,
         use_adaptive_gating: bool = True,
         use_paper_evolution: bool = False,
+        prompt_mode: str = 'prefix',
     ) -> None:
         super().__init__()
-
-        if embed_dim % num_heads != 0:
-            raise ValueError("embed_dim must be divisible by num_heads for prefix prompts")
 
         self.embed_dim = embed_dim
         self.prompt_length = prompt_length
         self.num_layers = num_layers
         self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
         self.use_task_conditioning = use_task_conditioning
         self.use_adaptive_gating = use_adaptive_gating
         self.use_paper_evolution = use_paper_evolution
+        self.prompt_mode = prompt_mode
+        
+        # Only enforce divisibility constraint for prefix mode
+        # VPT mode doesn't need this since it doesn't reshape by num_heads
+        if self.prompt_mode == 'prefix':
+            if embed_dim % num_heads != 0:
+                raise ValueError("embed_dim must be divisible by num_heads for prefix prompts")
+            self.head_dim = embed_dim // num_heads
+        else:
+            # For VPT mode, head_dim is not needed, but we can set it to None or a dummy value
+            # Setting it to None to make it clear it's not used in VPT mode
+            self.head_dim = None
 
         self.evolutions = nn.ModuleList(
             [
@@ -126,14 +135,27 @@ class RainbowPromptModule(nn.Module):
         return torch.stack([p for p in prompts], dim=0)
 
     def _format_prompt(self, prompt: torch.Tensor, gate_value: torch.Tensor, batch_size: int) -> torch.Tensor:
-        prompt = prompt.view(self.prompt_length, self.num_heads, self.head_dim)
-        # Create separate key and value prompts (initially identical but can diverge during training)
-        key_prompt = prompt.clone()
-        value_prompt = prompt.clone()
-        prefix = torch.stack([key_prompt, value_prompt], dim=0)  # [2, length, num_heads, head_dim]
-        prefix = prefix.unsqueeze(0).expand(batch_size, -1, -1, -1, -1).contiguous()
-        gate_scale = gate_value.view(1, 1, 1, 1, 1)
-        return prefix * gate_scale
+        """Format prompt based on mode: prefix or vpt."""
+        if self.prompt_mode == 'vpt':
+            return self._format_prompt_vpt(prompt, gate_value, batch_size)
+        else:
+            # Prefix mode: original implementation
+            prompt = prompt.view(self.prompt_length, self.num_heads, self.head_dim)
+            # Create separate key and value prompts (initially identical but can diverge during training)
+            key_prompt = prompt.clone()
+            value_prompt = prompt.clone()
+            prefix = torch.stack([key_prompt, value_prompt], dim=0)  # [2, length, num_heads, head_dim]
+            prefix = prefix.unsqueeze(0).expand(batch_size, -1, -1, -1, -1).contiguous()
+            gate_scale = gate_value.view(1, 1, 1, 1, 1)
+            return prefix * gate_scale
+    
+    def _format_prompt_vpt(self, prompt: torch.Tensor, gate_value: torch.Tensor, batch_size: int) -> torch.Tensor:
+        """Format prompt for VPT mode: returns [batch_size, prompt_length, embed_dim]."""
+        # prompt shape: [prompt_length, embed_dim]
+        # Expand to batch and apply gate scaling
+        prompt = prompt.unsqueeze(0).expand(batch_size, -1, -1)  # [batch_size, prompt_length, embed_dim]
+        gate_scale = gate_value.view(1, 1, 1)
+        return prompt * gate_scale
 
     def _prepare_training_prompt(self, layer_idx: int, batch_size: int) -> Optional[torch.Tensor]:
         base_prompts = self._stack_prompts(layer_idx)

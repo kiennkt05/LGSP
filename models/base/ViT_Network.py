@@ -398,7 +398,7 @@ class ViT_MYNET(nn.Module):
         optimizer_params.append({'params': params_classsifier, 'lr': self.args.lr_new})
 
         optim = torch.optim.Adam(optimizer_params)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=epochs * 1)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=self.args.T_max_new)
         
         best_epoch = -1
         best_accuracy = 0.0

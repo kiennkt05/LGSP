@@ -93,11 +93,16 @@ class ViT_Rainbow(nn.Module):
         self.encoder = create_model("vit_base_patch16_224_in21k", pretrained=True, num_classes=args.num_classes,
                                 drop_rate=0., drop_path_rate=0., drop_block_rate=None)
         
-        # Get num_heads before wrapping blocks
+        # Get num_heads before potentially wrapping blocks
         num_heads = self.encoder.blocks[0].attn.num_heads
         
-        # Wrap blocks to support prefix prompts
-        self.encoder.blocks = nn.ModuleList([BlockWrapper(block) for block in self.encoder.blocks])
+        # Get prompt mode from args
+        self.prompt_mode = getattr(args, 'rainbow_prompt_mode', 'prefix')
+        
+        # Only wrap blocks for prefix mode
+        if self.prompt_mode == 'prefix':
+            # Wrap blocks to support prefix prompts
+            self.encoder.blocks = nn.ModuleList([BlockWrapper(block) for block in self.encoder.blocks])
         
         # Classifier Head as a Fully Connected Layer
         self.classifier_head = nn.Linear(self.num_features, self.args.num_classes, bias=False)
@@ -109,7 +114,7 @@ class ViT_Rainbow(nn.Module):
         # Initialize RainbowPromptModule
         embed_dim = self.encoder.embed_dim
         num_layers = len(self.encoder.blocks)
-        # num_heads was captured before wrapping blocks
+        # num_heads was captured before potentially wrapping blocks
         
         # Get Rainbow config from args
         prompt_length = getattr(args, 'rainbow_prompt_length', 5)
@@ -138,6 +143,7 @@ class ViT_Rainbow(nn.Module):
             enable_alignment=True,
             use_adaptive_gating=True,
             use_paper_evolution=use_paper_evolution,
+            prompt_mode=self.prompt_mode,
         )
         
         self.lambda_sparse = getattr(args, 'rainbow_lambda_sparse', 0.0)
@@ -149,10 +155,35 @@ class ViT_Rainbow(nn.Module):
         self.seen_classes += len(new_classes)
     
     def encode(self, x):
-        x = self.encoder.forward_features(x)[:,0]
+        # Manually process through encoder
+        x = self.encoder.patch_embed(x)
+        ex_cls = self.encoder.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([ex_cls, x], dim=1)
+        x = self.encoder.pos_drop(x + self.encoder.pos_embed)
+        
+        # Iterate through blocks (no prompts for query mode)
+        if self.prompt_mode == 'prefix':
+            # Wrapped blocks for prefix mode
+            for block in self.encoder.blocks:
+                x = block(x, prompt=None)
+        else:
+            # Standard blocks for VPT mode
+            for block in self.encoder.blocks:
+                x = block(x)
+        
+        x = self.encoder.norm(x)
+        x = x[:, 0, :]  # Extract CLS token
         return x
     
     def prompt_encode(self, img, task_id=-1, train=True):
+        """Route to appropriate encoding method based on prompt mode."""
+        if self.prompt_mode == 'vpt':
+            return self.prompt_encode_vpt(img, task_id=task_id, train=train)
+        else:
+            return self.prompt_encode_prefix(img, task_id=task_id, train=train)
+    
+    def prompt_encode_prefix(self, img, task_id=-1, train=True):
+        """Original prefix mode encoding."""
         x = self.encoder.patch_embed(img)  # (batch_size, 196, embed_dim)
         ex_cls = self.encoder.cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat([ex_cls, x], dim=1)
@@ -170,6 +201,41 @@ class ViT_Rainbow(nn.Module):
                 device=x.device,
             )
             x = block(x, prompt=prompt_tokens)
+        
+        x = self.encoder.norm(x)
+        x = x[:, 0, :]
+        return x
+    
+    def prompt_encode_vpt(self, img, task_id=-1, train=True):
+        """VPT mode encoding: concatenate prompt tokens to input sequence."""
+        x = self.encoder.patch_embed(img)  # (batch_size, 196, embed_dim)
+        ex_cls = self.encoder.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([ex_cls, x], dim=1)
+        x = self.encoder.pos_drop(x + self.encoder.pos_embed)
+        
+        # Set training mode for Rainbow
+        self.rainbow_prompt.set_training(train)
+        
+        # Process through blocks with Rainbow prompts (VPT style)
+        for i, block in enumerate(self.encoder.blocks):
+            prompt_tokens = self.rainbow_prompt(
+                task_id=task_id,
+                layer_idx=i,
+                batch_size=x.shape[0],
+                device=x.device,
+            )
+            
+            if prompt_tokens is not None:
+                # Concatenate prompt tokens to input sequence
+                # prompt_tokens shape: [batch_size, prompt_length, embed_dim]
+                x = torch.cat((x, prompt_tokens), dim=1)
+                # x shape: [batch_size, seq_len + prompt_length, embed_dim]
+                num_tokens = x.shape[1]
+                # Process through block and remove prompt tokens
+                x = block(x)[:, :num_tokens - self.rainbow_prompt.prompt_length]
+            else:
+                # No prompt tokens, process normally
+                x = block(x)
         
         x = self.encoder.norm(x)
         x = x[:, 0, :]
@@ -222,7 +288,7 @@ class ViT_Rainbow(nn.Module):
         optimizer_params.append({'params': params_classifier, 'lr': self.args.lr_new})
 
         optim = torch.optim.Adam(optimizer_params)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=epochs * 1)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=self.args.T_max_new)
         
         best_epoch = -1
         best_accuracy = 0.0

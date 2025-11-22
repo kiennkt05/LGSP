@@ -26,7 +26,18 @@ class ViT_RainbowTrainer(Trainer):
         
         if self.args.model_dir is not None:
             print('Loading init parameters from: %s' % self.args.model_dir)
-            self.best_model_dict = torch.load(self.args.model_dir)['params']
+            checkpoint = torch.load(self.args.model_dir, map_location=self.device)
+            self.best_model_dict = checkpoint['params']
+            
+            # Load model when starting from a later session
+            if args.start_session > 0:
+                print('Loading model state_dict for session %d...' % args.start_session)
+                missing_keys, unexpected_keys = self.model.load_state_dict(checkpoint['params'], strict=False)
+                if missing_keys:
+                    print('Warning: Missing keys when loading model: %s' % missing_keys)
+                if unexpected_keys:
+                    print('Warning: Unexpected keys when loading model: %s' % unexpected_keys)
+                print('Model loaded successfully from: %s' % self.args.model_dir)
         else:
             print('random init params')
             if args.start_session > 0:
@@ -67,7 +78,7 @@ class ViT_RainbowTrainer(Trainer):
             scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.args.milestones,
                                                              gamma=self.args.gamma)
         elif self.args.schedule == 'Cosine':
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.args.epochs_base)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.args.T_max_base)
 
         return optimizer, scheduler
 
@@ -137,6 +148,14 @@ class ViT_RainbowTrainer(Trainer):
                     test_loss, test_acc, logs = test(self.model, testloader, args, session)
                     self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
                     result_list.append('After Prototype FC: test_loss:%.5f,test_acc:%.5f\n' % (test_loss, test_acc))
+                    
+                    # Save model after Replace Base FC
+                    checkpoint_path = os.path.join(self.args.save_path, 'session_0_after_replace_fc.pth')
+                    checkpoint = {
+                        'params': self.model.state_dict()
+                    }
+                    torch.save(checkpoint, checkpoint_path)
+                    print('Model saved after Replace Base FC to: %s' % checkpoint_path)
             else:  # incremental learning sessions
                 print("Incremental session: [%d]" % session)
                 print("#"*50)
@@ -163,9 +182,11 @@ class ViT_RainbowTrainer(Trainer):
         
         result_list.append(self.trlog['max_acc'])
 
+        print("\n\n")
         print("#"*50)
-        print("#"*17 + "END OF TRAINING" + "#"*18)
+        print("#" + " "*16 + "END OF TRAINING" + " "*17 + "#")
         print("#"*50)
+        print("\n\n")
 
         novel_sessions = [s for s in range(self.args.start_session, self.args.sessions) if s > 0]
         novel_last_epoch_acc = [self.trlog['novel_acc'][s - 1] for s in novel_sessions]
@@ -180,11 +201,15 @@ class ViT_RainbowTrainer(Trainer):
             novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
         else:
             novel_avg = 0.0
+
+        print("\n\n")
         print("#"*50)
-        print("#"*18 + "Final Results" + "#"*19)
+        print("#" + " "*17 + "Final Results" + " "*18 + "#")
         print("#"*50)
-        print("#"*12 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + "#"*12)
+        print("#" + " "*11 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + " "*11 + "#")
         print("#"*50)
+        print("\n\n")
+
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()
