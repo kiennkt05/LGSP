@@ -15,8 +15,6 @@ def get_command_line_parser():
 
     parser.add_argument('-epochs_base', type=int, default=50)
     parser.add_argument('-epochs_new', type=int, default=20)
-    parser.add_argument('-T_max_base', type=int, default=80, help='CosineAnnealingLR T_max for base')
-    parser.add_argument('-T_max_new', type=int, default=20, help='CosineAnnealingLR T_max for new')
     parser.add_argument('-lr_base', type=float, default=0.1)
     parser.add_argument('-lr_new', type=float, default=2e-4)
     parser.add_argument('-schedule', type=str, default='Step',
@@ -97,9 +95,6 @@ def get_command_line_parser():
                         help='Directory to save Rainbow prompts')
     parser.add_argument('-rainbow_use_paper_evolution', action='store_true',
                         help='Use paper evolution mode for Rainbow')
-    parser.add_argument('-rainbow_prompt_mode', type=str, default='prefix',
-                        choices=['prefix', 'vpt'],
-                        help='Rainbow prompt mode: prefix (Prefix Tuning) or vpt (Prompt Tuning/VPT)')
 
     return parser
 
