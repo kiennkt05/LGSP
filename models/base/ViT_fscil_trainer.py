@@ -25,18 +25,7 @@ class ViT_FSCILTrainer(Trainer):
         
         if self.args.model_dir is not None:
             print('Loading init parameters from: %s' % self.args.model_dir)
-            checkpoint = torch.load(self.args.model_dir, map_location=self.device)
-            self.best_model_dict = checkpoint['params']
-            
-            # Load model when starting from a later session
-            if args.start_session > 0:
-                print('Loading model state_dict for session %d...' % args.start_session)
-                missing_keys, unexpected_keys = self.model.load_state_dict(checkpoint['params'], strict=False)
-                if missing_keys:
-                    print('Warning: Missing keys when loading model: %s' % missing_keys)
-                if unexpected_keys:
-                    print('Warning: Unexpected keys when loading model: %s' % unexpected_keys)
-                print('Model loaded successfully from: %s' % self.args.model_dir)
+            self.best_model_dict = torch.load(self.args.model_dir)['params']
         else:
             print('random init params')
             if args.start_session > 0:
@@ -89,7 +78,7 @@ class ViT_FSCILTrainer(Trainer):
             scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.args.milestones,
                                                              gamma=self.args.gamma)
         elif self.args.schedule == 'Cosine':
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.args.T_max_base)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.args.epochs_base)
 
         return optimizer, scheduler
 
@@ -171,14 +160,6 @@ class ViT_FSCILTrainer(Trainer):
                     test_loss, test_acc, logs = test(self.model, testloader, args, session)
                     self.trlog['max_acc'][session] = float('%.3f' % (test_acc * 100))
                     result_list.append('After Prototype FC: test_loss:%.5f,test_acc:%.5f\n' % (test_loss, test_acc))
-                    
-                    # Save model after Replace Base FC
-                    checkpoint_path = os.path.join(self.args.save_path, 'session_0_after_replace_fc.pth')
-                    checkpoint = {
-                        'params': self.model.state_dict()
-                    }
-                    torch.save(checkpoint, checkpoint_path)
-                    print('Model saved after Replace Base FC to: %s' % checkpoint_path)
             else:  # incremental learning sessions
                 print("Incremental session: [%d]" % session)
                 print("#"*50)
@@ -228,7 +209,6 @@ class ViT_FSCILTrainer(Trainer):
         print("#" + " "*11 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + " "*11 + "#")
         print("#"*50)
         print("\n\n")
-        
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()
