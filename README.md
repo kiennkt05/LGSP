@@ -159,6 +159,45 @@ python train.py \
 
 **Note**: For different datasets, simply change the `dataset` variable in the configuration file.
 
+## 🧠 Nested Continuum Adapter (NCA)
+
+The Nested Continuum Adapter augments each ViT block with dual slow/fast residual paths plus a learnable gate, keeping LGSP prompts intact while enabling rapid few-shot adaptation.
+
+| Flag | Description | Default |
+| ---- | ----------- | ------- |
+| `-use_nca` | Enable adapters on every transformer block | `False` |
+| `-nca_reduction` | Bottleneck reduction factor for slow/fast MLPs | `4` |
+| `-lr_nca_slow` / `-lr_nca_fast_base` / `-lr_nca_fast_new` | LRs for slow path (base) and fast path (base / incremental) | `1e-4 / 5e-4 / 1e-4` |
+| `-nca_fast_reset` | Reset fast-path weights before each session | `True` |
+| `-use_meta_optimizer` | Replace fast-path optimizer with Deep Meta-Optimizer | `False` |
+| `-meta_hidden_dim` / `-meta_lr` | Size/LR of the Deep Momentum memory network | `256 / 1e-3` |
+| `-meta_snapshot_batches` | # of base batches to cache gradient prototypes | `1` |
+
+**Training flow**
+- **Base session**: slow/fast adapters both train; call `-use_nca` and tune `lr_nca_*` as needed. A post-base snapshot caches fast-path gradients for later projections when `-use_meta_optimizer` is set.
+- **Incremental sessions**: backbone, prompts, and slow path freeze. Fast path resets (optional) and is optimized either by Adam (`-use_nca` only) or by the Deep Meta-Optimizer (`-use_meta_optimizer`) which projects gradients against cached base memory.
+- **Inference**: Adapter-enhanced CLS features remain compatible with LGSP’s cosine classifier / prototype memory.
+
+**Example commands (CUB-200)**
+```bash
+# 1) Baseline LGSP (no adapters)
+python train.py -dataset cub200 -base_mode ft_cos -new_mode avg_cos
+
+# 2) ViT + Nested Adapter
+python train.py -dataset cub200 -base_mode ft_cos -new_mode avg_cos \
+    -use_nca -nca_reduction 4 -lr_nca_slow 1e-4 -lr_nca_fast_base 5e-4 -lr_nca_fast_new 1e-4
+
+# 3) ViT + Nested Adapter + Meta-Optimizer
+python train.py -dataset cub200 -base_mode ft_cos -new_mode avg_cos \
+    -use_nca -use_meta_optimizer -meta_snapshot_batches 2 \
+    -nca_reduction 4 -lr_nca_slow 1e-4 -lr_nca_fast_base 5e-4 -lr_nca_fast_new 1e-4
+```
+
+**Sanity checks**
+- Run a short base session (`-epochs_base 2`) with `-use_nca` and confirm loss decreases.
+- Enable `-use_meta_optimizer` and ensure the log prints base/novel accuracy plus adapter parameter counts; verify gradients remain finite.
+- For reproducibility, log both base (`logs['base_acc']`) and novel (`logs['new_acc']`) metrics to monitor forgetting vs. plasticity.
+
 ## 📜 Citation
 
 If you find our work useful for your research, please cite:

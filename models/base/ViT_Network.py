@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from utils import *
 from timm.models import create_model  
 import matplotlib.pyplot as plt  
+from models.modules.nested_adapter import NestedContinuumAdapter
+from models.optim.meta_optimizer import DeepMetaOptimizer
 
 class ViT_MYNET(nn.Module):
     def __init__(self, args, mode=None):
@@ -58,6 +60,27 @@ class ViT_MYNET(nn.Module):
             
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        # Nested Continuum Adapter configuration
+        self.use_nca = getattr(self.args, 'use_nca', False)
+        self.use_meta_optimizer = getattr(self.args, 'use_meta_optimizer', False)
+        self.nca_fast_reset = getattr(self.args, 'nca_fast_reset', True)
+        self.nca_base_gradient = None
+        self.nca_meta_memory = None
+        if self.use_nca:
+            reduction = max(1, getattr(self.args, 'nca_reduction', 4))
+            gate_init = getattr(self.args, 'nca_gate_init', 0.0)
+            bottleneck_dim = max(1, self.encoder.embed_dim // reduction)
+            self.nca_layers = nn.ModuleList(
+                NestedContinuumAdapter(
+                    embed_dim=self.encoder.embed_dim,
+                    bottleneck_dim=bottleneck_dim,
+                    gate_init=gate_init,
+                )
+                for _ in range(len(self.encoder.blocks))
+            )
+        else:
+            self.nca_layers = None
+
         if self.args.Frequency_mask:
             max_radius = torch.sqrt(torch.tensor((224 / 2) ** 2 + (224 / 2) ** 2)).item()
             self.radii = torch.linspace(0, max_radius, steps=self.args.num_r)
@@ -74,38 +97,104 @@ class ViT_MYNET(nn.Module):
         self.mask[:self.seen_classes]=-torch.inf
         self.seen_classes += len(new_classes)
     
+    def _prepare_tokens(self, x):
+        x = self.encoder.patch_embed(x)
+        cls = self.encoder.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([cls, x], dim=1)
+        x = self.encoder.pos_drop(x + self.encoder.pos_embed)
+        return x
+
+    def get_nca_param_groups(self):
+        if not self.use_nca or self.nca_layers is None:
+            return [], []
+
+        slow_params, fast_params = [], []
+        for layer in self.nca_layers:
+            slow, fast = layer.split_parameters()
+            slow_params.extend(slow)
+            fast_params.extend(fast)
+        return slow_params, fast_params
+
+    def reset_fast_adapters(self):
+        if not self.use_nca or self.nca_layers is None:
+            return
+        for layer in self.nca_layers:
+            layer.reset_fast_path(zero_init=True)
+
+    def configure_nca_base(self):
+        if not self.use_nca or self.nca_layers is None:
+            return
+        for layer in self.nca_layers:
+            layer.unfreeze_all()
+
+    def configure_nca_incremental(self):
+        if not self.use_nca or self.nca_layers is None:
+            return
+        for layer in self.nca_layers:
+            layer.train_fast_only()
+        if self.nca_fast_reset:
+            self.reset_fast_adapters()
+
+    def snapshot_base_gradients(self, dataloader, max_batches=1):
+        if not (self.use_nca and self.use_meta_optimizer):
+            return
+        _, fast_params = self.get_nca_param_groups()
+        if not fast_params:
+            return
+
+        grad_collection = []
+        processed = 0
+        self.train()
+
+        for batch in dataloader:
+            data_imgs, data_label = [_.to(self.device) for _ in batch]
+            self.zero_grad()
+            res = self.forward(data_imgs, session=0)
+            logits = res['logit'][:, :self.seen_classes]
+            loss = F.cross_entropy(logits, data_label)
+            loss.backward()
+            grads = []
+            for param in fast_params:
+                if param.grad is not None:
+                    grads.append(param.grad.detach().flatten())
+            if grads:
+                grad_collection.append(torch.cat(grads))
+            processed += 1
+            if processed >= max_batches:
+                break
+
+        self.zero_grad()
+        if grad_collection:
+            stacked = torch.stack(grad_collection)
+            self.nca_base_gradient = stacked.mean(dim=0).detach()
+
+    def _forward_blocks(self, x, use_prompts=False):
+        for i, block in enumerate(self.encoder.blocks):
+            if use_prompts:
+                prompt_tokens = self.Prompt_Tokens[i].unsqueeze(0)
+                x = torch.cat((x, prompt_tokens.expand(x.shape[0], -1, -1)), dim=1)
+                num_tokens = x.shape[1]
+                x = block(x)
+                x = x[:, :num_tokens - self.Prompt_Token_num]
+            else:
+                x = block(x)
+
+            if self.use_nca and self.nca_layers is not None:
+                x = self.nca_layers[i](x)
+        return x
+
     def encode(self, x):
-        x = self.encoder.forward_features(x)[:,0]
+        x = self._prepare_tokens(x)
+        x = self._forward_blocks(x, use_prompts=False)
+        x = self.encoder.norm(x)
+        x = x[:, 0, :]
         return x
     
     def prompt_encode(self, img):
-        x = self.encoder.patch_embed(img) # (batch_size, 196, embed_dim)
-        ex_cls = self.encoder.cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat([ex_cls,x],dim=1)
-        x = self.encoder.pos_drop(x + self.encoder.pos_embed)
-
-        Prompt_Token_num = self.Prompt_Tokens.shape[1]
-        # [depth, Prompt_Token_num, emb]
-
-        for i in range(len(self.encoder.blocks)):
-            # print(len(self.encoder.blocks)) # 12
-            # concatenate Prompt_Tokens
-            # 拿出第i个并增加一个维度[1, Prompt_Token_num, emb]
-            Prompt_Tokens = self.Prompt_Tokens[i].unsqueeze(0)
-            # firstly concatenate
-            # expand之后是[batch_size, Prompt_Token_num, emb]，之后和x进行cat
-            x = torch.cat((x, Prompt_Tokens.expand(x.shape[0], -1, -1)), dim=1)
-            # 此时x的维度是[batch_size, seq_len + Prompt_Token_num, emb]
-            num_tokens = x.shape[1]
-            # lastly remove, a genius trick
-            x = self.encoder.blocks[i](x)[:, :num_tokens - Prompt_Token_num]
-            # print(x.shape) # [64,197,768]
-            # 通过这一层，再在处理结束时移除它们
-
-        # print('哈哈')
-        # print(Prompt_Tokens)
+        x = self._prepare_tokens(img)
+        x = self._forward_blocks(x, use_prompts=True)
         x = self.encoder.norm(x)
-        x=x[:, 0, :]
+        x = x[:, 0, :]
         return x
     
     # Define a function to calculate cosine similarity, focusing more on local similarity.
@@ -393,6 +482,26 @@ class ViT_MYNET(nn.Module):
         params_vpt = [self.Prompt_Tokens]
         optimizer_params.append({'params': params_vpt, 'lr': self.args.lr_PromptTokens_novel})
 
+        fast_params = []
+        meta_optimizer = None
+        if self.use_nca:
+            _, fast_params = self.get_nca_param_groups()
+
+        if self.use_meta_optimizer and fast_params:
+            meta_optimizer = DeepMetaOptimizer(
+                fast_params,
+                lr=self.args.lr_nca_fast_new,
+                meta_lr=self.args.meta_lr,
+                hidden_dim=self.args.meta_hidden_dim,
+                device=self.device,
+            )
+            if self.nca_base_gradient is not None:
+                meta_optimizer.set_reference(self.nca_base_gradient.to(self.device))
+            if self.nca_meta_memory is not None:
+                meta_optimizer.load_memory(self.nca_meta_memory.to(self.device))
+        elif fast_params:
+            optimizer_params.append({'params': fast_params, 'lr': self.args.lr_nca_fast_new})
+
         # Classifier
         params_classsifier = [p for p in self.classifier_head.parameters()]
         optimizer_params.append({'params': params_classsifier, 'lr': self.args.lr_new})
@@ -404,6 +513,9 @@ class ViT_MYNET(nn.Module):
         best_accuracy = 0.0
 
         last_novel_acc = 0.0
+
+        if self.use_nca:
+            self.configure_nca_incremental()
 
         for epoch in range(epochs):
             batch_id = -1
@@ -424,8 +536,12 @@ class ViT_MYNET(nn.Module):
                 loss = loss_ce
                 
                 optim.zero_grad()
+                if meta_optimizer is not None:
+                    meta_optimizer.zero_grad()
                 loss.backward()
                 
+                if meta_optimizer is not None:
+                    meta_optimizer.step()
                 optim.step()
                 scheduler.step()
                 pred = torch.argmax(logits, dim=1)
@@ -445,6 +561,9 @@ class ViT_MYNET(nn.Module):
                     )
         result_list.append('Session {}, Best test_Epoch {}, Best test_Acc {:.4f}'.format(
                     session, best_epoch, best_accuracy))
+
+        if meta_optimizer is not None:
+            self.nca_meta_memory = meta_optimizer.get_memory()
 
         return tsa, last_novel_acc
     

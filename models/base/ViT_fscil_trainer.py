@@ -66,6 +66,13 @@ class ViT_FSCILTrainer(Trainer):
         params_vpt = [self.model.Prompt_Tokens]
         optimizer_params.append({'params': params_vpt, 'lr': self.args.lr_PromptTokens_base})
 
+        if getattr(self.model, 'use_nca', False):
+            slow_params, fast_params = self.model.get_nca_param_groups()
+            if slow_params:
+                optimizer_params.append({'params': slow_params, 'lr': self.args.lr_nca_slow})
+            if fast_params:
+                optimizer_params.append({'params': fast_params, 'lr': self.args.lr_nca_fast_base})
+
   
         params_classsifier = [p for p in self.model.classifier_head.parameters()]
         optimizer_params.append({'params': params_classsifier, 'lr': self.args.lr_base})
@@ -119,6 +126,8 @@ class ViT_FSCILTrainer(Trainer):
 
             if session == 0:  # load base class train img label
                 print('new classes for this session:\n', np.unique(train_set.targets))
+                if getattr(self.model, 'use_nca', False):
+                    self.model.configure_nca_base()
                 optimizer, scheduler = self.get_optimizer_base()
                 
                 # build_base_proto(trainloader, self.model, self.query_info, args)
@@ -153,6 +162,9 @@ class ViT_FSCILTrainer(Trainer):
                 result_list.append('Session {}, Test Best Epoch {},\nbest test Acc {:.4f}\n'.format(
                     session, self.trlog['max_acc_epoch'][session], self.trlog['max_acc'][session], ))
 
+                if getattr(self.args, 'use_meta_optimizer', False) and getattr(self.model, 'use_nca', False):
+                    self.model.snapshot_base_gradients(trainloader, max_batches=self.args.meta_snapshot_batches)
+
                 #*=======================================================================================
                 if not args.not_data_init:
                     self.model = replace_base_fc(train_set, testloader.dataset.transform, self.model, args)
@@ -168,7 +180,8 @@ class ViT_FSCILTrainer(Trainer):
                 print("#"*50)
             
                 self.model.update_seen_classes(np.unique(train_set.targets))
-
+                if getattr(self.model, 'use_nca', False):
+                    self.model.configure_nca_incremental()
                 self.model.mode = self.args.new_mode
                 self.model.train()
                 trainloader.dataset.transform = testloader.dataset.transform
