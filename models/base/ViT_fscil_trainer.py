@@ -195,9 +195,11 @@ class ViT_FSCILTrainer(Trainer):
                 result_list.append('Session {}, test Acc {:.3f}\n'.format(session, self.trlog['max_acc'][session]))
         result_list.append(self.trlog['max_acc'])
 
+        print()
         print("#"*50)
-        print("#"*17 + "END OF TRAINING" + "#"*18)
+        print("#" + " "*16 + "END OF TRAINING" + " "*17 + "#")
         print("#"*50)
+        print()
 
         novel_sessions = [s for s in range(self.args.start_session, self.args.sessions) if s > 0]
         novel_last_epoch_acc = [self.trlog['novel_acc'][s - 1] for s in novel_sessions]
@@ -212,11 +214,16 @@ class ViT_FSCILTrainer(Trainer):
         average = sum(max_acc) / len(max_acc)
         if novel_last_epoch_acc:
             novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
+
+        print()
         print("#"*50)
-        print("#"*18 + "Final Results" + "#"*19)
+        print("#" + " "*17 + "Final Results" + " "*17 + "#")
         print("#"*50)
-        print("#"*12 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + "#"*12)
+        print("#" + " "*11 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + " "*11 + "#")
         print("#"*50)
+        print()
+
+
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()
