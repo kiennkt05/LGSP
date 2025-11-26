@@ -33,13 +33,16 @@ class NestedContinuumAdapter(nn.Module):
             nn.Linear(hidden_dim, embed_dim),
         )
 
-        self.gate = nn.Parameter(torch.full((1,), gate_init))
+        # Linear gate initialized at 0.0 so that at the start of a new session,
+        # the model behaves exactly like the frozen slow path (LGSP baseline).
+        self.gate = nn.Parameter(torch.zeros(1))
         self.reset_fast_path(zero_init=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         slow = self.slow_path(x)
         fast = self.fast_path(x)
-        return x + slow + torch.sigmoid(self.gate) * fast
+        # Linear gate: when gate == 0, output = x + slow (fast path off).
+        return x + slow + self.gate * fast
 
     # -------------------------
     # Utility methods

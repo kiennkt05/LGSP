@@ -64,11 +64,11 @@ def get_command_line_parser():
 
     parser.add_argument('-pool_size', type=int, default=24)
 
-    parser.add_argument('-pixel_prompt', type=str, default='YES', choices=['NO', 'YES'])
-    parser.add_argument('-Frequency_mask', type=bool, default=True)
+    parser.add_argument('-pixel_prompt', type=str, default='NO', choices=['NO', 'YES'])
+    parser.add_argument('-Frequency_mask', action='store_true')
     parser.add_argument('-lr_Frequency_mask', type=float, default=0.03) 
     parser.add_argument('-num_r', type=int, default=100)
-    parser.add_argument('-adaptive_weighting', default=True, type=bool,)
+    parser.add_argument('-adaptive_weighting', action='store_true')
     parser.add_argument('-dataset', type=str, default='cub200',
                         choices=['mini_imagenet', 'cub200', 'cifar100', 'FGVCAircraft', 'iNF200'])
 
@@ -76,7 +76,7 @@ def get_command_line_parser():
     parser.add_argument('-use_nca', action='store_true', help='Enable Nested Continuum Adapter blocks')
     parser.add_argument('-nca_reduction', type=int, default=4)
     parser.add_argument('-nca_gate_init', type=float, default=0.0)
-    parser.add_argument('-nca_fast_reset', type=bool, default=True)
+    parser.add_argument('-nca_fast_reset', action='store_true')
     parser.add_argument('-lr_nca_slow', type=float, default=1e-4)
     parser.add_argument('-lr_nca_fast_base', type=float, default=5e-4)
     parser.add_argument('-lr_nca_fast_new', type=float, default=1e-4)
