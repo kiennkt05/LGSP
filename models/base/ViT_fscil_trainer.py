@@ -43,7 +43,7 @@ class ViT_FSCILTrainer(Trainer):
     def get_optimizer_base(self):
         optimizer_params = []
         
-        if self.args.pixel_prompt == "YES":
+        if self.args.pixel_prompt:
             prompt_branch_params = []
             for prompt_net in self.model.prompt_generators:
                 prompt_branch_params.extend(list(prompt_net.parameters()))
@@ -107,14 +107,14 @@ class ViT_FSCILTrainer(Trainer):
             print(f"Session: {session} Data Config")
             print(len(train_set.targets))
             if session == 0:
-                if self.args.pixel_prompt == "YES":
+                if self.args.pixel_prompt:
                     checkpoint_path = "run_script/meta_net_2_params_lastBaseEpoch.pth"
                     state_dict = torch.load(checkpoint_path, map_location=self.device)
 
                     for prompt_net in self.model.prompt_generators:
                         prompt_net.load_state_dict(state_dict)
             if session > 0:
-                if self.args.pixel_prompt == "YES":
+                if self.args.pixel_prompt:
                     for prompt_net in self.model.prompt_generators:
                         for p in prompt_net.parameters():
                             p.requires_grad = False

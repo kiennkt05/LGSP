@@ -33,6 +33,10 @@ class NestedContinuumAdapter(nn.Module):
             nn.Linear(hidden_dim, embed_dim),
         )
 
+        # Control flag to enable/disable the fast path at inference/training time
+        # (used for feature distillation / LwF to obtain "adapter-off" features).
+        self.fast_path_active = True
+
         # Linear gate initialized at 0.0 so that at the start of a new session,
         # the model behaves exactly like the frozen slow path (LGSP baseline).
         self.gate = nn.Parameter(torch.zeros(1))
@@ -40,6 +44,11 @@ class NestedContinuumAdapter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         slow = self.slow_path(x)
+
+        if not self.fast_path_active:
+            # "Adapter-off" mode for feature distillation: only the slow path contributes.
+            return x + slow
+
         fast = self.fast_path(x)
         # Linear gate: when gate == 0, output = x + slow (fast path off).
         return x + slow + self.gate * fast

@@ -64,7 +64,7 @@ def get_command_line_parser():
 
     parser.add_argument('-pool_size', type=int, default=24)
 
-    parser.add_argument('-pixel_prompt', type=str, default='NO', choices=['NO', 'YES'])
+    parser.add_argument('-pixel_prompt', action='store_true')
     parser.add_argument('-Frequency_mask', action='store_true')
     parser.add_argument('-lr_Frequency_mask', type=float, default=0.03) 
     parser.add_argument('-num_r', type=int, default=100)

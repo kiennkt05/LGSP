@@ -49,7 +49,7 @@ class ViT_MYNET(nn.Module):
 
         self.prompt_generators = nn.ModuleList()
 
-        if self.args.pixel_prompt == "YES":
+        if self.args.pixel_prompt:
             pool_size = self.args.pool_size
             self.prompt_generators = nn.ModuleList(
                 build_prompt_module() for _ in range(pool_size)
@@ -120,6 +120,16 @@ class ViT_MYNET(nn.Module):
             return
         for layer in self.nca_layers:
             layer.reset_fast_path(zero_init=True)
+
+    def set_nca_fast_active(self, active: bool = True):
+        """
+        Enable/disable the fast path of all NestedContinuumAdapter layers.
+        Used for feature distillation (LwF) where we need "adapter-off" features.
+        """
+        if not self.use_nca or self.nca_layers is None:
+            return
+        for layer in self.nca_layers:
+            layer.fast_path_active = active
 
     def configure_nca_base(self):
         if not self.use_nca or self.nca_layers is None:
@@ -207,7 +217,7 @@ class ViT_MYNET(nn.Module):
     
     def get_prompts(self, x, session=-1):
         res = {}  # Initialize res as an empty dictionary
-        if self.args.pixel_prompt == "YES":
+        if self.args.pixel_prompt:
             prompts_list = []
             for prompt_net in self.prompt_generators:
                 prompts_list.append(self.prompt_dropout(prompt_net(x)))
@@ -441,7 +451,7 @@ class ViT_MYNET(nn.Module):
         res = {}
         
         if self.args.adaptive_weighting:
-            if self.args.pixel_prompt == 'YES':
+            if self.args.pixel_prompt:
                 res = self.get_prompts(input, session=session)  
                 prompts = res['prompts']
                 input1 = input + prompts * 1
@@ -449,7 +459,7 @@ class ViT_MYNET(nn.Module):
                 input2 = self.get_Frequency_mask(input)
             input = self.alpha * input1 + self.beta * input2
         else:
-            if self.args.pixel_prompt == 'YES':
+            if self.args.pixel_prompt:
                 res = self.get_prompts(input, session=session)  
                 prompts = res['prompts']
                 input = input + prompts * 1
@@ -464,6 +474,8 @@ class ViT_MYNET(nn.Module):
         logit = self.classifier_head(embedding)
 
         res['logit'] = logit
+        # Expose penultimate-layer features for distillation / analysis.
+        res['features'] = embedding
 
         if memory_data is not None:  # 把通过高斯分布得到数据拿到
             logit = torch.cat([logit, memory_data], dim=0)
@@ -526,14 +538,41 @@ class ViT_MYNET(nn.Module):
         
                 self.train()
 
-                res = self.forward(data_imgs, memory_data=sg_inputs, session=session)
-                logits = res['logit']
+                # -----------------------------
+                # Feature Distillation (LwF) to
+                # prevent catastrophic forgetting
+                # -----------------------------
+                if self.use_nca and self.nca_layers is not None:
+                    # 1) Anchor features with fast-path disabled ("adapter-off")
+                    with torch.no_grad():
+                        self.set_nca_fast_active(False)
+                        res_anchor = self.forward(data_imgs, session=session)
+                        features_anchor = res_anchor['features'].detach()
+                        self.set_nca_fast_active(True)
 
-                seen_class = self.base_class + session * self.way
-                logits = logits[:, :seen_class] # Same as test
+                    # 2) Normal forward with adapters enabled
+                    res = self.forward(data_imgs, memory_data=sg_inputs, session=session)
+                    logits = res['logit']
+                    features_current = res['features']
 
-                loss_ce = F.cross_entropy(logits, data_label)
-                loss = loss_ce
+                    seen_class = self.base_class + session * self.way
+                    logits = logits[:, :seen_class]  # Same as test
+
+                    loss_ce = F.cross_entropy(logits, data_label)
+                    loss_distill = F.mse_loss(features_current, features_anchor)
+
+                    lambda_distill = 5.0
+                    loss = loss_ce + lambda_distill * loss_distill
+                else:
+                    # Fallback: original CE loss only (no adapters / no distillation)
+                    res = self.forward(data_imgs, memory_data=sg_inputs, session=session)
+                    logits = res['logit']
+
+                    seen_class = self.base_class + session * self.way
+                    logits = logits[:, :seen_class]  # Same as test
+
+                    loss_ce = F.cross_entropy(logits, data_label)
+                    loss = loss_ce
                 
                 optim.zero_grad()
                 if meta_optimizer is not None:
