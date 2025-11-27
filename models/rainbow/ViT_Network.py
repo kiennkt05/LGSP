@@ -97,7 +97,23 @@ class ViT_Rainbow(nn.Module):
         num_heads = self.encoder.blocks[0].attn.num_heads
         
         # Wrap blocks to support prefix prompts
-        self.encoder.blocks = nn.ModuleList([BlockWrapper(block) for block in self.encoder.blocks])
+        wrapped_blocks = nn.ModuleList([BlockWrapper(block) for block in self.encoder.blocks])
+        self.encoder.blocks = wrapped_blocks
+        
+        # Override forward_features to handle wrapped blocks
+        # Capture encoder reference in closure
+        encoder_ref = self.encoder
+        def custom_forward_features(x):
+            x = encoder_ref.patch_embed(x)
+            x = torch.cat([encoder_ref.cls_token.expand(x.shape[0], -1, -1), x], dim=1)
+            x = encoder_ref.pos_drop(x + encoder_ref.pos_embed)
+            # Manually iterate through wrapped blocks (without prompts for query mode)
+            for block in encoder_ref.blocks:
+                x = block(x, prompt=None)
+            x = encoder_ref.norm(x)
+            return x
+        
+        self.encoder.forward_features = custom_forward_features
         
         # Classifier Head as a Fully Connected Layer
         self.classifier_head = nn.Linear(self.num_features, self.args.num_classes, bias=False)
