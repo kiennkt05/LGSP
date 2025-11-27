@@ -41,6 +41,17 @@ class RainbowPromptStorage:
             "gate": stored["gate"].clone(),
         }
 
+    def list_task_ids(self) -> list[int]:
+        """Return sorted list of task ids available in cache or on disk."""
+        task_ids = set(self._cache.keys())
+        for file in self.root.glob("task_*.pt"):
+            try:
+                suffix = file.stem.split("_")[-1]
+                task_ids.add(int(suffix))
+            except ValueError:
+                continue
+        return sorted(task_ids)
+
     def save_task(self, task_id: int) -> None:
         if task_id not in self._cache:
             raise KeyError(f"No prompts cached for task {task_id}")

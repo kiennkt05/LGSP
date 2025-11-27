@@ -127,6 +127,8 @@ def base_train(model, trainloader, optimizer, scheduler, epoch, class_list, args
 def test(model, testloader, args, session):
     test_class = args.base_class + session * args.way
     model = model.eval()
+    if hasattr(model, "prepare_inference"):
+        model.prepare_inference(session)
     vl = Averager_Loss()
     va = Averager()
     va_base = Averager()

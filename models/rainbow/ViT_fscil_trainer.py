@@ -107,6 +107,8 @@ class ViT_RainbowTrainer(Trainer):
                     start_time = time.time()
                     # train base sess
                     train_loss, train_acc = base_train(self.model, trainloader, optimizer, scheduler, epoch, np.unique(train_set.targets), args)
+                    # Persist prompts for this session after each training epoch
+                    self.model.rainbow_prompt.finalize_task(session)
                     test_loss, test_acc, logs = test(self.model, testloader, args, session)
 
                     if (test_acc * 100) >= self.trlog['max_acc'][session]:
@@ -163,16 +165,18 @@ class ViT_RainbowTrainer(Trainer):
         
         result_list.append(self.trlog['max_acc'])
 
+        print("\n\n")
         print("#"*50)
-        print("#"*17 + "END OF TRAINING" + "#"*18)
+        print("#" + " "*16 + "END OF TRAINING" + " "*17 + "#")
         print("#"*50)
+        print("\n\n")
 
         novel_sessions = [s for s in range(self.args.start_session, self.args.sessions) if s > 0]
         novel_last_epoch_acc = [self.trlog['novel_acc'][s - 1] for s in novel_sessions]
 
         print('Incremental Novel last-epoch accuracy (%):\n', novel_last_epoch_acc)
         print('Last session test accuracy:\n', self.trlog['max_acc'])
-        print()
+
         max_acc = self.trlog['max_acc']
         first_value = max_acc[0]
         average = sum(max_acc) / len(max_acc)
@@ -180,11 +184,15 @@ class ViT_RainbowTrainer(Trainer):
             novel_avg = sum(novel_last_epoch_acc) / len(novel_last_epoch_acc)
         else:
             novel_avg = 0.0
+
+        print("\n\n")
         print("#"*50)
-        print("#"*18 + "Final Results" + "#"*19)
+        print("#" + " "*17 + "Final Results" + " "*18 + "#")
         print("#"*50)
-        print("#"*12 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + "#"*12)
+        print("#" + " "*11 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + " "*11 + "#")
         print("#"*50)
+        print("\n\n")
+        
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()

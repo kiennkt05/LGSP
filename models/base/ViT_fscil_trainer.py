@@ -209,6 +209,7 @@ class ViT_FSCILTrainer(Trainer):
         print("#" + " "*11 + f"O: {average:.2f} B: {first_value:.2f} N: {novel_avg:.2f}" + " "*11 + "#")
         print("#"*50)
         print("\n\n")
+        
         save_list_to_txt(os.path.join(args.save_path, 'results.txt'), result_list)
 
         t_end_time = time.time()

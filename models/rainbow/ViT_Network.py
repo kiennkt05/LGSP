@@ -143,14 +143,21 @@ class ViT_Rainbow(nn.Module):
         self.lambda_sparse = getattr(args, 'rainbow_lambda_sparse', 0.0)
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.rainbow_prompt_log = getattr(args, 'rainbow_log_prompt_stats', False)
 
     def update_seen_classes(self, new_classes):
         print('new classes for this session:\n', new_classes)
         self.seen_classes += len(new_classes)
     
     def encode(self, x):
-        x = self.encoder.forward_features(x)[:,0]
-        return x
+        x = self.encoder.patch_embed(x)
+        ex_cls = self.encoder.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([ex_cls, x], dim=1)
+        x = self.encoder.pos_drop(x + self.encoder.pos_embed)
+        for block in self.encoder.blocks:
+            x = block(x, prompt=None)
+        x = self.encoder.norm(x)
+        return x[:, 0, :]
     
     def prompt_encode(self, img, task_id=-1, train=True):
         x = self.encoder.patch_embed(img)  # (batch_size, 196, embed_dim)
@@ -198,6 +205,16 @@ class ViT_Rainbow(nn.Module):
         if memory_data is not None:
             res['logit'] = torch.cat([logit, memory_data], dim=0)
         return res
+
+    def prepare_inference(self, session: int) -> None:
+        """Load and cache prompt banks for all observed sessions."""
+        max_task = max(session, 0)
+        task_ids = list(range(max_task + 1))
+        self.rainbow_prompt.prepare_inference(task_ids=task_ids, device=self.device)
+        if self.rainbow_prompt_log and task_ids:
+            total_layers = len(self.rainbow_prompt._inference_cache)
+            total_prompts = sum(t.shape[0] for t in self.rainbow_prompt._inference_cache.values())
+            print(f"[RainbowPrompt] Prepared {total_prompts} prompts across {total_layers} layers for tasks {task_ids}.")
 
     def train_inc(self, dataloader, epochs, session, class_list, testloader, result_list, test, model_test):
         print("[Session: {}]".format(session))
@@ -268,6 +285,9 @@ class ViT_Rainbow(nn.Module):
                 tl.add(loss.item(), len(data_label))
                 ta.add(acc, len(data_label))
             
+            # Persist prompts for this session at the end of each epoch
+            self.rainbow_prompt.finalize_task(session)
+
             # Step scheduler once per epoch, not per batch
             scheduler.step()
             lrc = scheduler.get_last_lr()[0]

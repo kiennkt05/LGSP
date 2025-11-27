@@ -78,6 +78,8 @@ class RainbowPromptModule(nn.Module):
 
         self._latest_layer_cache: Dict[int, Dict[str, torch.Tensor]] = {}
         self._aux_losses: Dict[str, torch.Tensor] = {}
+        self._inference_cache: Dict[int, torch.Tensor] = {}
+        self._inference_task_ids: list[int] = []
 
         self._gate_config = dict(
             tau_start=gate_tau_start,
@@ -98,6 +100,13 @@ class RainbowPromptModule(nn.Module):
 
     def set_training(self, mode: bool) -> None:
         self.training_mode = mode
+        if mode:
+            self.clear_inference_cache()
+
+    def clear_inference_cache(self) -> None:
+        """Drop any cached prompt banks used for evaluation."""
+        self._inference_cache.clear()
+        self._inference_task_ids = []
 
     def start_task(self, task_id: int) -> None:
         """Initialize base prompts and gating for a new task."""
@@ -118,6 +127,7 @@ class RainbowPromptModule(nn.Module):
             self.current_gate = None
         self._latest_layer_cache.clear()
         self._aux_losses.clear()
+        self.clear_inference_cache()
 
     def _stack_prompts(self, layer_idx: int) -> torch.Tensor:
         prompts = list(self.base_prompts[layer_idx])
@@ -126,12 +136,21 @@ class RainbowPromptModule(nn.Module):
         return torch.stack([p for p in prompts], dim=0)
 
     def _format_prompt(self, prompt: torch.Tensor, gate_value: torch.Tensor, batch_size: int) -> torch.Tensor:
-        prompt = prompt.view(self.prompt_length, self.num_heads, self.head_dim)
-        # Create separate key and value prompts (initially identical but can diverge during training)
+        """Convert prompt embeddings to prefix attention tensors."""
+        if prompt.dim() == 2:
+            prompt = prompt.unsqueeze(0)
+
+        num_prompts = prompt.shape[0]
+        prompt = prompt.view(num_prompts, self.prompt_length, self.num_heads, self.head_dim)
         key_prompt = prompt.clone()
         value_prompt = prompt.clone()
-        prefix = torch.stack([key_prompt, value_prompt], dim=0)  # [2, length, num_heads, head_dim]
+
+        # Stack key/value and merge prompt dimension into length axis
+        prefix = torch.stack([key_prompt, value_prompt], dim=1)  # [num_prompts, 2, length, heads, dim]
+        prefix = prefix.permute(1, 0, 2, 3, 4).contiguous()
+        prefix = prefix.view(2, num_prompts * self.prompt_length, self.num_heads, self.head_dim)
         prefix = prefix.unsqueeze(0).expand(batch_size, -1, -1, -1, -1).contiguous()
+
         gate_scale = gate_value.view(1, 1, 1, 1, 1)
         return prefix * gate_scale
 
@@ -172,13 +191,66 @@ class RainbowPromptModule(nn.Module):
         return formatted_prompt
 
     def _prepare_inference_prompt(self, task_id: int, layer_idx: int, batch_size: int, device: torch.device) -> Optional[torch.Tensor]:
-        stored = self.storage.get(task_id, layer_idx)
-        if stored is None:
+        if not self._inference_cache:
+            self.prepare_inference(task_ids=None, device=device)
+
+        prompt_bank = self._inference_cache.get(layer_idx)
+        if prompt_bank is None:
             return None
 
-        prompt_tensor = stored["prompt"].to(device)
-        gate_value = stored["gate"].to(device)
+        prompt_tensor = prompt_bank.to(device)
+        gate_value = torch.ones((), device=device)
         return self._format_prompt(prompt_tensor, gate_value, batch_size)
+
+    def prepare_inference(self, task_ids: Optional[list[int]] = None, device: Optional[torch.device] = None) -> None:
+        """Assemble prompt banks from all stored tasks for evaluation."""
+        device = device or self.device
+        if task_ids is None:
+            task_ids = self.storage.list_task_ids()
+
+        stacked_per_layer: Dict[int, torch.Tensor] = {}
+        available_tasks: list[int] = []
+
+        for task_id in task_ids:
+            try:
+                self.storage.load_task(task_id, device=device)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    f"RainbowPrompt task {task_id} not found; aborting inference preparation."
+                ) from exc
+            available_tasks.append(task_id)
+
+        for layer_idx in range(self.num_layers):
+            layer_prompts = []
+            for task_id in available_tasks:
+                stored = self.storage.get(task_id, layer_idx)
+                if stored is None:
+                    if task_id < len(self.base_prompts[layer_idx]):
+                        prompt = self.base_prompts[layer_idx][task_id].detach().to(device)
+                        gate = torch.ones((), device=device)
+                    else:
+                        continue
+                else:
+                    prompt = stored["prompt"].to(device)
+                    gate = stored["gate"].to(device)
+
+                gate_scalar = gate.view(1)[0]
+                prompt = prompt * gate_scalar
+                layer_prompts.append(prompt)
+
+            if layer_prompts:
+                stacked_per_layer[layer_idx] = torch.stack(layer_prompts, dim=0)
+
+        self._inference_cache = stacked_per_layer
+        self._inference_task_ids = available_tasks
+
+        if not available_tasks:
+            print("[RainbowPrompt] Warning: no stored tasks found for inference.")
+            return
+
+        missing_layers = [idx for idx in range(self.num_layers) if idx not in stacked_per_layer]
+        if missing_layers:
+            print(f"[RainbowPrompt] Warning: missing prompts for layers {missing_layers}.")
 
     def forward(
         self,
