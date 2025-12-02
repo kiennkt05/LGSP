@@ -22,7 +22,7 @@ def get_command_line_parser():
     parser.add_argument('-milestones', nargs='+', type=int, default=[60, 70])
     parser.add_argument('-step', type=int, default=80)
     parser.add_argument('-gamma', type=float, default=0.1)
-    parser.add_argument('-temperature', type=float, default=16)
+    parser.add_argument('-temperature', type=float, default=0.1)
     parser.add_argument('-not_data_init', action='store_true', help='using average data embedding to init or not')
 
     parser.add_argument('-batch_size_base', type=int, default=64)

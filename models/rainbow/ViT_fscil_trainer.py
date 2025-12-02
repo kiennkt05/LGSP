@@ -2,6 +2,7 @@ from models.base.base import Trainer
 import torch
 import pandas as pd
 import time
+import os
 
 from models.base.helper import *
 from utils import *
@@ -41,6 +42,29 @@ class ViT_RainbowTrainer(Trainer):
 
     def get_optimizer_base(self):
         optimizer_params = []
+        
+        # Pixel prompt parameters
+        if getattr(self.args, 'pixel_prompt', 'NO') == "YES":
+            prompt_branch_params = []
+            for prompt_net in self.model.prompt_generators:
+                prompt_branch_params.extend(list(prompt_net.parameters()))
+
+            params_Mask = [
+                p
+                for p in prompt_branch_params
+                if p.requires_grad
+            ]
+            optimizer_params.append({'params': params_Mask, 'lr': getattr(self.args, 'lr_local', 0.01)})
+  
+        # Frequency mask parameters
+        if getattr(self.args, 'Frequency_mask', False):
+            params_Frequency_mask = [self.model.weights]
+            optimizer_params.append({'params': params_Frequency_mask, 'lr': getattr(self.args, 'lr_Frequency_mask', 0.03)})
+
+        # Adaptive weighting parameters
+        if getattr(self.args, 'adaptive_weighting', False):
+            params_test1 = [self.model.alpha, self.model.beta]
+            optimizer_params.append({'params': params_test1, 'lr': 0.1})
         
         # Rainbow prompt parameters (base prompts for current session)
         for layer_idx in range(len(self.model.encoder.blocks)):
@@ -88,6 +112,24 @@ class ViT_RainbowTrainer(Trainer):
             train_set, trainloader, testloader = self.get_dataloader(session)
             print(f"Session: {session} Data Config")
             print(len(train_set.targets))
+            
+            # Handle pixel_prompt loading/freezing
+            if session == 0:
+                if getattr(self.args, 'pixel_prompt', 'NO') == "YES":
+                    checkpoint_path = "run_script/meta_net_2_params_lastBaseEpoch.pth"
+                    if os.path.exists(checkpoint_path):
+                        state_dict = torch.load(checkpoint_path, map_location=self.device)
+                        for prompt_net in self.model.prompt_generators:
+                            prompt_net.load_state_dict(state_dict)
+            
+            if session > 0:
+                if getattr(self.args, 'pixel_prompt', 'NO') == "YES":
+                    for prompt_net in self.model.prompt_generators:
+                        for p in prompt_net.parameters():
+                            p.requires_grad = False
+
+                if getattr(self.args, 'Frequency_mask', False):
+                    self.model.weights.requires_grad = True
             
             # Start Rainbow task for this session
             self.model.rainbow_prompt.start_task(session)
@@ -176,6 +218,8 @@ class ViT_RainbowTrainer(Trainer):
 
         print('Incremental Novel last-epoch accuracy (%):\n', novel_last_epoch_acc)
         print('Last session test accuracy:\n', self.trlog['max_acc'])
+        if getattr(self.args, 'adaptive_weighting', False):
+            print('Adaptive weights: (alpha, beta) = ({}, {})'.format(self.model.alpha, self.model.beta))
         print()
         max_acc = self.trlog['max_acc']
         first_value = max_acc[0]
@@ -254,4 +298,3 @@ class ViT_RainbowTrainer(Trainer):
                 os.makedirs(directory)
         except OSError:
             print('Error: Creating directory. ' + directory)
-
