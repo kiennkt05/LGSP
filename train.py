@@ -73,8 +73,13 @@ def get_command_line_parser():
                         choices=['mini_imagenet', 'cub200', 'cifar100', 'FGVCAircraft', 'iNF200'])
     
     # Method selection
-    parser.add_argument('-method', type=str, default='base',
-                        choices=['base', 'rainbow'], help='Training method: base or rainbow')
+    parser.add_argument(
+        '-method',
+        type=str,
+        default='base',
+        choices=['base', 'rainbow', 'hybrid'],
+        help='Training method: base, rainbow, or hybrid'
+    )
     
     # Rainbow-specific arguments
     parser.add_argument('-rainbow_prompt_length', type=int, default=5,
@@ -108,7 +113,7 @@ if __name__ == '__main__':
     args.num_gpu = set_gpu(args)
     
     # Set default Rainbow dimensions if not specified
-    if args.method == 'rainbow':
+    if args.method in ['rainbow', 'hybrid']:
         if args.rainbow_proj_dim is None:
             # Default to embed_dim // 8 (embed_dim is typically 768 for ViT-Base)
             args.rainbow_proj_dim = 768 // 8
@@ -118,6 +123,9 @@ if __name__ == '__main__':
     if args.method == 'rainbow':
         from models.rainbow.ViT_fscil_trainer import ViT_RainbowTrainer
         trainer = ViT_RainbowTrainer(args)
+    elif args.method == 'hybrid':
+        from models.rainbow.ViT_fscil_trainer import ViT_HybridTrainer
+        trainer = ViT_HybridTrainer(args)
     else:
         from models.base.ViT_fscil_trainer import ViT_FSCILTrainer
         trainer = ViT_FSCILTrainer(args)

@@ -126,16 +126,20 @@ class RainbowPromptModule(nn.Module):
         return torch.stack([p for p in prompts], dim=0)
 
     def _format_prompt(self, prompt: torch.Tensor, gate_value: torch.Tensor, batch_size: int) -> torch.Tensor:
-        prompt = prompt.view(self.prompt_length, self.num_heads, self.head_dim)
-        # Create separate key and value prompts (initially identical but can diverge during training)
-        key_prompt = prompt.clone()
-        value_prompt = prompt.clone()
+        """Format a prompt for PreT_Attention."""
+        prompt_length = prompt.shape[0]
+        prompt = prompt.view(prompt_length, self.num_heads, self.head_dim)
+        key_prompt = prompt
+        value_prompt = prompt
         prefix = torch.stack([key_prompt, value_prompt], dim=0)  # [2, length, num_heads, head_dim]
         prefix = prefix.unsqueeze(0).expand(batch_size, -1, -1, -1, -1).contiguous()
         gate_scale = gate_value.view(1, 1, 1, 1, 1)
         return prefix * gate_scale
 
     def _prepare_training_prompt(self, layer_idx: int, batch_size: int) -> Optional[torch.Tensor]:
+        if self.current_gate is None:
+            raise RuntimeError("Probabilistic gate not initialized. Call start_task() first.")
+
         base_prompts = self._stack_prompts(layer_idx)
         new_prompt = self.base_prompts[layer_idx][-1]
 
@@ -171,13 +175,32 @@ class RainbowPromptModule(nn.Module):
 
         return formatted_prompt
 
-    def _prepare_inference_prompt(self, task_id: int, layer_idx: int, batch_size: int, device: torch.device) -> Optional[torch.Tensor]:
-        stored = self.storage.get(task_id, layer_idx)
-        if stored is None:
-            return None
+    def _prepare_inference_prompt(
+        self,
+        task_id: int,
+        layer_idx: int,
+        batch_size: int,
+        device: torch.device,
+    ) -> Optional[torch.Tensor]:
+        """Prepare inference prompt using the globally latest prompt for this layer.
 
-        prompt_tensor = stored["prompt"].to(device)
-        gate_value = stored["gate"].to(device)
+        At inference time we ignore per-task distinctions and always use the
+        most recently finalized RainbowPrompt for each layer in this run.
+        """
+        # Prefer the most recent prompt stored in the in-memory cache.
+        stored = self.storage.get(task_id, layer_idx)
+
+        if stored is None:
+            # Fallback to the latest prompt seen during training in this run.
+            cached = self._latest_layer_cache.get(layer_idx)
+            if cached is None:
+                return None
+            prompt_tensor = cached["prompt"].to(device)
+            gate_value = cached["gate"].to(device)
+        else:
+            prompt_tensor = stored["prompt"].to(device)
+            gate_value = stored["gate"].to(device)
+
         return self._format_prompt(prompt_tensor, gate_value, batch_size)
 
     def forward(
@@ -188,7 +211,10 @@ class RainbowPromptModule(nn.Module):
         device: torch.device,
     ) -> Optional[torch.Tensor]:
         if self.training_mode:
+            # During training, generate the prompt for the current task.
             return self._prepare_training_prompt(layer_idx, batch_size)
+
+        # During inference, use the globally latest prompt for this layer.
         return self._prepare_inference_prompt(task_id, layer_idx, batch_size, device)
 
     def auxiliary_losses(self) -> Dict[str, torch.Tensor]:
@@ -197,13 +223,26 @@ class RainbowPromptModule(nn.Module):
         return losses
 
     def finalize_task(self, task_id: int) -> None:
+        """Finalize a task by keeping its latest prompts in-memory only.
+
+        We populate the in-memory storage cache for the given task so that
+        subsequent inference/testing within this run can reuse the latest
+        RainbowPrompts, but we do not perform any disk I/O.
+        """
         if not self._latest_layer_cache:
             return
         for layer_idx, data in self._latest_layer_cache.items():
             self.storage.put(task_id, layer_idx, data["prompt"], data["gate"])
-        self.storage.save_task(task_id)
         self._latest_layer_cache.clear()
 
     def load_task(self, task_id: int, device: torch.device) -> None:
-        self.storage.load_task(task_id, device=device)
+        """Compatibility shim for older code paths.
+
+        Prompts are no longer loaded from disk; this method is retained only
+        to prevent import-time or call-site errors. Any prompts to be used
+        at inference time must have been produced during training in this
+        run and are kept in-memory by `finalize_task`.
+        """
+        _ = device  # unused
+        # No-op: we intentionally do not modify storage here.
 
