@@ -568,3 +568,49 @@ class ViT_HybridTrainer(Trainer):
         end_params = sum(param.numel() for param in self.model.parameters())
         print('[Begin] Total parameters: {}'.format(self.init_params))
         print('[END] Total parameters: {}'.format(end_params))
+
+    def set_save_path(self):
+        mode = self.args.base_mode + '-' + self.args.new_mode
+        if not self.args.not_data_init:
+            mode = mode + '-' + 'data_init'
+
+        # Use a different subfolder name to distinguish from pure Rainbow runs
+        self.args.save_path = '%s/%s/' % (self.args.dataset, time.strftime("%Y%m%d_%H%M%S")) + 'hybrid_ViT/'
+
+        self.args.save_path = self.args.save_path + '%s-start_%d/' % (mode, self.args.start_session)
+        if self.args.schedule == 'Milestone':
+            mile_stone = str(self.args.milestones).replace(" ", "").replace(',', '_')[1:-1]
+            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-MS_%s-Gam_%.2f-Bs_%d-seed_%d' % (
+                self.args.epochs_base, self.args.lr_base, mile_stone, self.args.gamma, self.args.batch_size_base,
+                self.args.seed)
+        elif self.args.schedule == 'Step':
+            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-Step_%d-Gam_%.2f-Bs_%d-seed_%d' % (
+                self.args.epochs_base, self.args.lr_base, self.args.step, self.args.gamma, self.args.batch_size_base,
+                self.args.seed)
+        else:
+            self.args.save_path = self.args.save_path + 'Epo_%d-Lr_%.4f-COS_%d-Gam_%.2f-Bs_%d-seed_%d' % (
+                self.args.epochs_base, self.args.lr_base, self.args.step, self.args.gamma, self.args.batch_size_base,
+                self.args.seed)
+        if 'cos' in mode:
+            self.args.save_path = self.args.save_path + '-T_%.2f' % (self.args.temperature)
+
+        if 'ft' in self.args.new_mode:
+            self.args.save_path = self.args.save_path + '-ftLR_%.3f-ftEpoch_%d' % (
+                self.args.lr_new, self.args.epochs_new)
+
+        self.args.save_path = os.path.join(f'checkpoint/{self.args.out}', self.args.save_path)
+        ensure_path(self.args.save_path)
+        return None
+
+    def set_log_path(self):
+        if self.args.model_dir is not None:
+            # Reuse Rainbow log structure but mark as hybrid via folder naming above
+            self.args.save_log_path = 'rainbow/' + '%s' % self.args.dataset
+            if 'avg' in self.args.new_mode:
+                self.args.save_log_path = self.args.save_log_path + '_prototype_' + self.args.model_dir.split('/')[-2][:7] + '/'
+            if 'ft' in self.args.new_mode:
+                self.args.save_log_path = self.args.save_log_path + '_WaRP_' + 'lr_new_%.3f-epochs_new_%d-keep_frac_%.2f/' % (
+                    self.args.lr_new, self.args.epochs_new, self.args.fraction_to_keep)
+            self.args.save_log_path = os.path.join('acc_logs', self.args.save_log_path)
+            ensure_path(self.args.save_log_path)
+            self.args.save_log_path = self.args.save_log_path + self.args.model_dir.split('/')[-2] + '.csv'
